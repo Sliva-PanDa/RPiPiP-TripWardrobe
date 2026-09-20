@@ -1,0 +1,20 @@
+# Xcode
+*.xcodeproj/
+*.xcworkspace/
+build/
+DerivedData/
+results/
+screenshots/
+screenshots-flat/
+*.xcresult/
+
+# macOS / Windows
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Прочее
+*.moved-aside
+*.hmap
+*.ipa
+*.dSYM.zip

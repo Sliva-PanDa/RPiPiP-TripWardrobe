@@ -1,0 +1,137 @@
+name: Сборка, тесты и скриншоты
+
+on:
+  push:
+    branches: [main, lab1, lab2, lab3, lab4]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Xcode · тесты · скриншоты
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+
+      - name: Показать версию Xcode
+        run: |
+          sudo xcode-select -p
+          xcodebuild -version
+          swift --version
+
+      - name: Установить XcodeGen и xcparse
+        run: |
+          brew install xcodegen
+          brew install chargepoint/xcparse/xcparse
+
+      - name: Сгенерировать проект Xcode из project.yml
+        run: xcodegen generate --spec project.yml
+
+      - name: Подобрать симуляторы iPhone и iPad
+        id: sims
+        run: |
+          python3 <<'PY' >> "$GITHUB_OUTPUT"
+          import json, subprocess
+
+          data = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"]))
+
+          def pick(prefixes):
+              best = None
+              for runtime, devices in data["devices"].items():
+                  if "iOS" not in runtime:
+                      continue
+                  for device in devices:
+                      if not device.get("isAvailable"):
+                          continue
+                      name = device["name"]
+                      if any(name.startswith(p) for p in prefixes):
+                          if best is None or name > best[0]:
+                              best = (name, device["udid"])
+              return best
+
+          iphone = pick(["iPhone 16", "iPhone 15", "iPhone"])
+          ipad = pick(["iPad Pro", "iPad Air", "iPad"])
+          print(f"iphone_name={iphone[0]}")
+          print(f"iphone_udid={iphone[1]}")
+          print(f"ipad_name={ipad[0]}")
+          print(f"ipad_udid={ipad[1]}")
+          PY
+          echo "Выбраны симуляторы:"
+          cat "$GITHUB_OUTPUT"
+
+      - name: Собрать приложение
+        run: |
+          xcodebuild build \
+            -project TripWardrobe.xcodeproj \
+            -scheme TripWardrobe \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.iphone_udid }}" \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Модульные тесты
+        run: |
+          xcodebuild test \
+            -project TripWardrobe.xcodeproj \
+            -scheme TripWardrobe \
+            -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.iphone_udid }}" \
+            -only-testing:TripWardrobeTests \
+            -resultBundlePath results/unit.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: UI-тесты и скриншоты · iPhone
+        run: |
+          xcodebuild test \
+            -project TripWardrobe.xcodeproj \
+            -scheme TripWardrobe \
+            -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.iphone_udid }}" \
+            -only-testing:TripWardrobeUITests \
+            -resultBundlePath results/ui-iphone.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: UI-тесты и скриншоты · iPad
+        run: |
+          xcodebuild test \
+            -project TripWardrobe.xcodeproj \
+            -scheme TripWardrobe \
+            -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.ipad_udid }}" \
+            -only-testing:TripWardrobeUITests \
+            -resultBundlePath results/ui-ipad.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Извлечь скриншоты из результатов тестирования
+        if: always()
+        run: |
+          mkdir -p screenshots
+          for bundle in results/ui-iphone.xcresult results/ui-ipad.xcresult; do
+            [ -d "$bundle" ] || continue
+            xcparse screenshots --test "$bundle" screenshots || true
+          done
+          # Сложить все PNG в один каталог с плоскими именами
+          mkdir -p screenshots-flat
+          find screenshots -name '*.png' -print0 | while IFS= read -r -d '' f; do
+            cp "$f" "screenshots-flat/$(basename "$f")"
+          done
+          ls -la screenshots-flat || true
+
+      - name: Опубликовать скриншоты
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: screenshots-${{ github.ref_name }}
+          path: screenshots-flat/
+          if-no-files-found: warn
+
+      - name: Опубликовать результаты тестирования
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: xcresult-${{ github.ref_name }}
+          path: results/
+          if-no-files-found: ignore
