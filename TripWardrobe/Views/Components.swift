@@ -141,17 +141,18 @@ struct StatusChip: View {
 
     var body: some View {
         Button(action: action) {
-            HStack(spacing: 5) {
+            HStack(spacing: 4) {
                 Image(systemName: status.icon)
                 Text(status.title)
+                    .fixedSize()
                 Text("\(count)")
                     .font(.caption2.weight(.bold).monospacedDigit())
-                    .padding(.horizontal, 5)
+                    .padding(.horizontal, 4)
                     .padding(.vertical, 1)
                     .background(.background.opacity(0.6), in: Capsule())
             }
-            .font(.caption.weight(.medium))
-            .padding(.horizontal, 10)
+            .font(.caption2.weight(.medium))
+            .padding(.horizontal, 8)
             .padding(.vertical, 6)
             .background(isOn ? status.tint.opacity(0.25) : Color.gray.opacity(0.12),
                         in: Capsule())

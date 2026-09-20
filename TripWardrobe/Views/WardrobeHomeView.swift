@@ -58,20 +58,22 @@ struct WardrobeHomeView: View {
                             viewModel.toggle(status)
                         }
                     }
-                    if !viewModel.statusFilter.isEmpty {
-                        Button("Сбросить", systemImage: "xmark.circle") {
-                            viewModel.resetFilter()
-                        }
-                        .font(.caption)
-                        .buttonStyle(.borderless)
-                        .accessibilityIdentifier("resetFilter")
-                    }
                 }
                 .padding(.vertical, 2)
             }
             .listRowInsets(EdgeInsets(top: 8, leading: 16, bottom: 8, trailing: 16))
         } header: {
-            Text("Статус вещи")
+            HStack {
+                Text("Статус вещи")
+                Spacer()
+                if !viewModel.statusFilter.isEmpty {
+                    Button("Сбросить") { viewModel.resetFilter() }
+                        .font(.caption)
+                        .textCase(nil)
+                        .buttonStyle(.borderless)
+                        .accessibilityIdentifier("resetFilter")
+                }
+            }
         }
     }
 
