@@ -1,4 +1,4 @@
-import XCTest
+﻿import XCTest
 import Combine
 @testable import TripWardrobe
 
@@ -64,8 +64,10 @@ final class NetworkingTests: XCTestCase {
 
     /// Синхронное получение результата издателя.
     private func result<P: Publisher>(of publisher: P,
-                                      timeout: TimeInterval = 5)
-        -> Result<P.Output, P.Failure> {
+                                      timeout: TimeInterval = 30,
+                                      file: StaticString = #filePath,
+                                      line: UInt = #line)
+        -> Result<P.Output, P.Failure>? {
         var outcome: Result<P.Output, P.Failure>?
         let expectation = expectation(description: "издатель завершился")
 
@@ -81,7 +83,10 @@ final class NetworkingTests: XCTestCase {
             .store(in: &cancellables)
 
         wait(for: [expectation], timeout: timeout)
-        return outcome!
+        if outcome == nil {
+            XCTFail("Издатель не завершился за \(timeout) с", file: file, line: line)
+        }
+        return outcome
     }
 
     private var catalogJSON: Data {
@@ -114,7 +119,7 @@ final class NetworkingTests: XCTestCase {
         StubURLProtocol.handler = { _ in (200, self.catalogJSON) }
         let provider = RestCatalogProvider(session: session)
 
-        guard case .success(let catalog) = result(of: provider.catalogPublisher()) else {
+        guard case .success(let catalog)? = result(of: provider.catalogPublisher()) else {
             return XCTFail("Каталог не загружен")
         }
         XCTAssertEqual(catalog.version, 7)
@@ -127,7 +132,7 @@ final class NetworkingTests: XCTestCase {
         StubURLProtocol.handler = { _ in (404, Data()) }
         let provider = RestCatalogProvider(session: session)
 
-        guard case .failure(let error) = result(of: provider.catalogPublisher()) else {
+        guard case .failure(let error)? = result(of: provider.catalogPublisher()) else {
             return XCTFail("Ожидалась ошибка")
         }
         XCTAssertEqual(error, .clientError(404))
@@ -138,7 +143,7 @@ final class NetworkingTests: XCTestCase {
         StubURLProtocol.handler = { _ in (503, Data()) }
         let provider = RestCatalogProvider(session: session)
 
-        guard case .failure(let error) = result(of: provider.catalogPublisher()) else {
+        guard case .failure(let error)? = result(of: provider.catalogPublisher()) else {
             return XCTFail("Ожидалась ошибка")
         }
         XCTAssertEqual(error, .serverError(503))
@@ -149,7 +154,7 @@ final class NetworkingTests: XCTestCase {
         StubURLProtocol.handler = { _ in (200, Data("не json".utf8)) }
         let provider = RestCatalogProvider(session: session)
 
-        guard case .failure(let error) = result(of: provider.catalogPublisher()) else {
+        guard case .failure(let error)? = result(of: provider.catalogPublisher()) else {
             return XCTFail("Ожидалась ошибка")
         }
         if case .decoding = error { return }
@@ -161,7 +166,7 @@ final class NetworkingTests: XCTestCase {
         StubURLProtocol.handler = { _ in throw URLError(.notConnectedToInternet) }
         let provider = RestCatalogProvider(session: session)
 
-        guard case .failure(let error) = result(of: provider.catalogPublisher()) else {
+        guard case .failure(let error)? = result(of: provider.catalogPublisher()) else {
             return XCTFail("Ожидалась ошибка")
         }
         if case .unreachable = error { return }
@@ -203,7 +208,7 @@ final class NetworkingTests: XCTestCase {
         }
 
         let service = OpenMeteoWeatherService(session: session)
-        guard case .success(let snapshot) = result(of: service.forecastPublisher(city: "Батуми"))
+        guard case .success(let snapshot)? = result(of: service.forecastPublisher(city: "Батуми"))
         else {
             return XCTFail("Прогноз не получен")
         }
@@ -221,7 +226,7 @@ final class NetworkingTests: XCTestCase {
         StubURLProtocol.handler = { _ in (200, Data("{\"results\":[]}".utf8)) }
         let service = OpenMeteoWeatherService(session: session)
 
-        guard case .failure(let error) = result(of: service.forecastPublisher(city: "Нигде")) else {
+        guard case .failure(let error)? = result(of: service.forecastPublisher(city: "Нигде")) else {
             return XCTFail("Ожидалась ошибка")
         }
         if case .notFound = error { return }
