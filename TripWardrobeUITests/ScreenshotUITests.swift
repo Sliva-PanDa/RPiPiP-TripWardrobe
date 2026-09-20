@@ -29,6 +29,8 @@ final class ScreenshotUITests: XCTestCase {
 
     /// Сохраняет текущий экран как вложение результата тестирования.
     private func snapshot(_ name: String) {
+        // Пауза, чтобы анимации интерфейса успели завершиться.
+        Thread.sleep(forTimeInterval: 1.0)
         let attachment = XCTAttachment(screenshot: XCUIScreen.main.screenshot())
         attachment.name = "\(devicePrefix)-\(name)"
         attachment.lifetime = .keepAlways
@@ -69,6 +71,9 @@ final class ScreenshotUITests: XCTestCase {
         guard search.waitForExistence(timeout: 10) else { return }
         search.tap()
         search.typeText("руб")
+        // Скрыть клавиатуру, чтобы на скриншоте был виден список результатов.
+        search.typeText("\n")
+        Thread.sleep(forTimeInterval: 1.5)
         snapshot("03-search")
 
         let firstResult = app.cells.firstMatch
@@ -93,16 +98,21 @@ final class ScreenshotUITests: XCTestCase {
     func test04Navigation() {
         waitForHome()
 
-        let openSeason = element("openSeason_Зима · Горы")
-        if openSeason.waitForExistence(timeout: 10) {
-            openSeason.tap()
-        } else {
-            app.staticTexts["Зима · Горы"].firstMatch.tap()
+        let openSeason = app.descendants(matching: .any)
+            .matching(NSPredicate(format: "identifier BEGINSWITH %@", "openSeason_"))
+            .firstMatch
+
+        guard openSeason.waitForExistence(timeout: 10) else { return }
+        if !openSeason.isHittable {
+            app.swipeUp()
         }
+        openSeason.tap()
+
         _ = element("seasonList").waitForExistence(timeout: 10)
         snapshot("06-season")
 
-        let look = app.staticTexts["Горнолыжный день"].firstMatch
+        // Первый образ сезона: ячейка в секции «Образы».
+        let look = app.cells.element(boundBy: 3)
         if look.waitForExistence(timeout: 10) {
             look.tap()
             _ = element("lookList").waitForExistence(timeout: 10)

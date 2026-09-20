@@ -37,34 +37,42 @@ jobs:
         id: sims
         run: |
           python3 <<'PY' >> "$GITHUB_OUTPUT"
-          import json, subprocess
+          import json, subprocess, sys
 
           data = json.loads(subprocess.check_output(
               ["xcrun", "simctl", "list", "devices", "available", "-j"]))
 
-          def pick(prefixes):
-              best = None
-              for runtime, devices in data["devices"].items():
-                  if "iOS" not in runtime:
-                      continue
-                  for device in devices:
-                      if not device.get("isAvailable"):
-                          continue
-                      name = device["name"]
-                      if any(name.startswith(p) for p in prefixes):
-                          if best is None or name > best[0]:
-                              best = (name, device["udid"])
-              return best
+          available = []
+          for runtime, devices in data["devices"].items():
+              if "iOS" not in runtime:
+                  continue
+              for device in devices:
+                  if device.get("isAvailable"):
+                      available.append(device)
 
-          iphone = pick(["iPhone 16", "iPhone 15", "iPhone"])
-          ipad = pick(["iPad Pro", "iPad Air", "iPad"])
+          def pick(preferred, fallback):
+              """Точное совпадение по списку предпочтений, иначе любое устройство семейства."""
+              for name in preferred:
+                  for device in available:
+                      if device["name"] == name:
+                          return device["name"], device["udid"]
+              for device in available:
+                  if device["name"].startswith(fallback):
+                      return device["name"], device["udid"]
+              sys.exit(f"Не найден симулятор {fallback}")
+
+          iphone = pick(["iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15"], "iPhone")
+          ipad = pick(["iPad Pro 13-inch (M4)", "iPad Pro 11-inch (M4)",
+                       "iPad Pro (12.9-inch) (6th generation)",
+                       "iPad Air 13-inch (M2)", "iPad Air (5th generation)"], "iPad")
+
           print(f"iphone_name={iphone[0]}")
           print(f"iphone_udid={iphone[1]}")
           print(f"ipad_name={ipad[0]}")
           print(f"ipad_udid={ipad[1]}")
           PY
-          echo "Выбраны симуляторы:"
-          cat "$GITHUB_OUTPUT"
+          echo "iPhone: $(grep iphone_name "$GITHUB_OUTPUT")"
+          echo "iPad:   $(grep ipad_name "$GITHUB_OUTPUT")"
 
       - name: Собрать приложение
         run: |
@@ -96,6 +104,7 @@ jobs:
             CODE_SIGNING_ALLOWED=NO
 
       - name: UI-тесты и скриншоты · iPad
+        if: always()
         run: |
           xcodebuild test \
             -project TripWardrobe.xcodeproj \

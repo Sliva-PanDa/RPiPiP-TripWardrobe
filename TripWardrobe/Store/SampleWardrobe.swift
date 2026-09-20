@@ -89,4 +89,62 @@ enum SampleWardrobe {
             ]
         )
     ]
+
+    // MARK: - Поездки
+
+    static let trips: [Trip] = [
+        Trip(title: "Отпуск на море",
+             destination: "Батуми",
+             kind: .beach,
+             startDate: date(2026, 10, 3),
+             endDate: date(2026, 10, 10),
+             limitGrams: BaggageLimit.cabin.grams,
+             items: pack([("Плавки", 3), ("Рубашка льняная", 2),
+                          ("Полотенце пляжное", 1), ("Сланцы", 1)])),
+
+        Trip(title: "Конференция",
+             destination: "Вильнюс",
+             kind: .business,
+             startDate: date(2026, 11, 12),
+             endDate: date(2026, 11, 15),
+             limitGrams: BaggageLimit.cabin.grams,
+             items: pack([("Пиджак шерстяной", 1), ("Брюки классические", 1),
+                          ("Чиносы бежевые", 1), ("Лоферы", 1)])),
+
+        Trip(title: "Горнолыжная неделя",
+             destination: "Буковель",
+             kind: .mountains,
+             startDate: date(2026, 12, 20),
+             endDate: date(2026, 12, 27),
+             limitGrams: BaggageLimit.checked.grams,
+             items: pack([("Пуховик", 1), ("Термобельё", 2),
+                          ("Свитер шерстяной", 1)]))
+    ]
+
+    // MARK: - Вспомогательные построители
+
+    private static func date(_ year: Int, _ month: Int, _ day: Int) -> Date {
+        var components = DateComponents()
+        components.year = year
+        components.month = month
+        components.day = day
+        components.hour = 12
+        return Calendar(identifier: .gregorian).date(from: components) ?? Date()
+    }
+
+    /// Поиск вещи гардероба по названию — используется для наполнения демо-поездок.
+    static func item(named name: String) -> WardrobeItem? {
+        seasons
+            .flatMap { $0.looks }
+            .flatMap { $0.items }
+            .first { $0.name == name }
+    }
+
+    private static func pack(_ specification: [(String, Int)]) -> [PackedItem] {
+        specification.compactMap { name, quantity in
+            guard let item = item(named: name) else { return nil }
+            return PackedItem(item: item, quantity: quantity,
+                              isPacked: false, source: .manual)
+        }
+    }
 }

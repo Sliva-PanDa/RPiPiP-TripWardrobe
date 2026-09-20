@@ -1,15 +1,19 @@
 import Foundation
 import Observation
 
-/// Источник данных интерфейса.
-/// На этапе лабораторной работы № 1 демонстрационные данные хранятся в памяти;
-/// в последующих работах этот же интерфейс будет обслуживаться базой данных SwiftData.
+/// Реализация хранилища в оперативной памяти.
+/// Скрыта за протоколами `WardrobeProviding` и `TripStoring`, поэтому
+/// модели представления не знают, откуда приходят данные: в лабораторной
+/// работе № 3 эту же роль возьмёт на себя база данных SwiftData.
 @Observable
-final class WardrobeStore {
+final class WardrobeStore: WardrobeProviding, TripStoring {
     var seasons: [SeasonStyle]
+    private(set) var trips: [Trip]
 
-    init(seasons: [SeasonStyle] = SampleWardrobe.seasons) {
+    init(seasons: [SeasonStyle] = SampleWardrobe.seasons,
+         trips: [Trip] = SampleWardrobe.trips) {
         self.seasons = seasons
+        self.trips = trips
     }
 
     // MARK: - Сводные показатели
@@ -90,5 +94,37 @@ final class WardrobeStore {
             copy.looks = looks
             return copy
         }
+    }
+
+    // MARK: - Изменение гардероба
+
+    /// Перевод вещи в другой статус («В шкафу», «В поездке», «В стирке»).
+    func setStatus(_ status: ItemStatus, forItem id: WardrobeItem.ID) {
+        for seasonIndex in seasons.indices {
+            for lookIndex in seasons[seasonIndex].looks.indices {
+                guard let itemIndex = seasons[seasonIndex].looks[lookIndex]
+                    .items.firstIndex(where: { $0.id == id }) else { continue }
+                seasons[seasonIndex].looks[lookIndex].items[itemIndex].status = status
+                return
+            }
+        }
+    }
+
+    // MARK: - Поездки
+
+    func trip(id: Trip.ID) -> Trip? {
+        trips.first { $0.id == id }
+    }
+
+    func save(_ trip: Trip) {
+        if let index = trips.firstIndex(where: { $0.id == trip.id }) {
+            trips[index] = trip
+        } else {
+            trips.append(trip)
+        }
+    }
+
+    func delete(tripID: Trip.ID) {
+        trips.removeAll { $0.id == tripID }
     }
 }
