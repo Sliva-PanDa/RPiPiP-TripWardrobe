@@ -37,7 +37,10 @@ final class ExportTests: XCTestCase {
 
     /// Файл кодируется в JSON и читается обратно без потерь.
     func testChecklistRoundTrip() throws {
-        let checklist = PackingChecklist(trip: trip())
+        // Дата экспорта задана с точностью до секунды: формат ISO 8601
+        // не хранит доли секунды, и сравнение после чтения было бы неточным.
+        let checklist = PackingChecklist(trip: trip(),
+                                         exportedAt: Date(timeIntervalSince1970: 1_790_100_000))
         let data = try checklist.encoded()
 
         let text = try XCTUnwrap(String(data: data, encoding: .utf8))
