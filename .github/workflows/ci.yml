@@ -100,6 +100,7 @@ jobs:
             -scheme TripWardrobe \
             -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.iphone_udid }}" \
             -only-testing:TripWardrobeUITests \
+            -skip-testing:TripWardrobeUITests/DemoUITests \
             -resultBundlePath results/ui-iphone.xcresult \
             CODE_SIGNING_ALLOWED=NO
 
@@ -111,6 +112,7 @@ jobs:
             -scheme TripWardrobe \
             -destination "platform=iOS Simulator,id=${{ steps.sims.outputs.ipad_udid }}" \
             -only-testing:TripWardrobeUITests \
+            -skip-testing:TripWardrobeUITests/DemoUITests \
             -resultBundlePath results/ui-ipad.xcresult \
             CODE_SIGNING_ALLOWED=NO
 

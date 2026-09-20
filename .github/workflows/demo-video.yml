@@ -1,0 +1,121 @@
+name: Записать видео работы приложения
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ветка проекта (main, lab1, lab2, lab3, lab4)"
+        default: "main"
+        required: true
+      device:
+        description: "Устройство"
+        type: choice
+        options: [iPhone, iPad]
+        default: iPhone
+
+jobs:
+  demo:
+    name: Видео работы приложения
+    runs-on: macos-15
+    timeout-minutes: 60
+
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Установить XcodeGen
+        run: brew install xcodegen
+
+      - name: Сгенерировать проект Xcode
+        run: xcodegen generate --spec project.yml
+
+      - name: Подобрать симулятор
+        id: sim
+        run: |
+          python3 <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, subprocess, sys
+
+          family = os.environ["DEVICE"]
+          data = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"]))
+
+          available = []
+          for runtime, devices in data["devices"].items():
+              if "iOS" in runtime:
+                  available.extend(d for d in devices if d.get("isAvailable"))
+
+          preferred = {
+              "iPhone": ["iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15"],
+              "iPad": ["iPad Pro 13-inch (M4)", "iPad Pro 11-inch (M4)",
+                       "iPad Air 13-inch (M2)", "iPad Air (5th generation)"],
+          }[family]
+
+          for name in preferred:
+              for device in available:
+                  if device["name"] == name:
+                      print(f"udid={device['udid']}")
+                      print(f"name={device['name']}")
+                      sys.exit(0)
+          for device in available:
+              if device["name"].startswith(family):
+                  print(f"udid={device['udid']}")
+                  print(f"name={device['name']}")
+                  sys.exit(0)
+          sys.exit(f"Не найден симулятор {family}")
+          PY
+        env:
+          DEVICE: ${{ inputs.device }}
+
+      - name: Загрузить симулятор
+        run: |
+          xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+      - name: Начать запись экрана
+        run: |
+          mkdir -p video
+          nohup xcrun simctl io "${{ steps.sim.outputs.udid }}" recordVideo \
+            --codec h264 --force video/demo.mp4 > video/record.log 2>&1 &
+          echo $! > video/record.pid
+          sleep 3
+
+      - name: Пройти сценарий демонстрации
+        run: |
+          xcodebuild test \
+            -project TripWardrobe.xcodeproj \
+            -scheme TripWardrobe \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -only-testing:TripWardrobeUITests/DemoUITests \
+            -resultBundlePath video/demo.xcresult \
+            CODE_SIGNING_ALLOWED=NO
+
+      - name: Остановить запись
+        if: always()
+        run: |
+          if [ -f video/record.pid ]; then
+            kill -INT "$(cat video/record.pid)" || true
+          fi
+          sleep 5
+          ls -la video || true
+
+      - name: Опубликовать видео
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: demo-${{ inputs.device }}-${{ inputs.ref }}
+          path: video/demo.mp4
+          if-no-files-found: warn
+
+      - name: Где взять видео
+        if: always()
+        run: |
+          {
+            echo "## Видео работы приложения готово"
+            echo
+            echo "Устройство: **${{ steps.sim.outputs.name }}**, ветка \`${{ inputs.ref }}\`."
+            echo
+            echo "Файл лежит в артефакте **demo-${{ inputs.device }}-${{ inputs.ref }}**"
+            echo "внизу этой страницы — скачайте и откройте demo.mp4."
+          } >> "$GITHUB_STEP_SUMMARY"
