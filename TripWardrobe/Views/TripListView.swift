@@ -31,7 +31,7 @@ struct TripListView: View {
             }
         }
         .sheet(isPresented: $viewModel.isNewTripPresented) {
-            NewTripSheet { title, destination, kind, start, end, limit in
+            NewTripSheet(defaultLimitGrams: viewModel.defaultLimitGrams) { title, destination, kind, start, end, limit in
                 viewModel.createTrip(title: title,
                                      destination: destination,
                                      kind: kind,
@@ -101,6 +101,8 @@ struct BaggageProgressBar: View {
 struct NewTripSheet: View {
     @Environment(\.dismiss) private var dismiss
 
+    /// Лимит веса по умолчанию берётся из настроек приложения (UserDefaults).
+    let defaultLimitGrams: Int
     let onCreate: (String, String, TripKind, Date, Date, Int) -> Void
 
     @State private var title = ""
@@ -108,7 +110,14 @@ struct NewTripSheet: View {
     @State private var kind: TripKind = .beach
     @State private var startDate = Date()
     @State private var endDate = Date().addingTimeInterval(60 * 60 * 24 * 7)
-    @State private var limit: BaggageLimit = .checked
+    @State private var limitGrams: Int
+
+    init(defaultLimitGrams: Int,
+         onCreate: @escaping (String, String, TripKind, Date, Date, Int) -> Void) {
+        self.defaultLimitGrams = defaultLimitGrams
+        self.onCreate = onCreate
+        _limitGrams = State(initialValue: defaultLimitGrams)
+    }
 
     var body: some View {
         NavigationStack {
@@ -127,9 +136,13 @@ struct NewTripSheet: View {
                     DatePicker("Возвращение", selection: $endDate, displayedComponents: .date)
                 }
                 Section("Багаж") {
-                    Picker("Лимит веса", selection: $limit) {
+                    Picker("Лимит веса", selection: $limitGrams) {
                         ForEach(BaggageLimit.allCases) { limit in
-                            Text(limit.title).tag(limit)
+                            Text(limit.title).tag(limit.grams)
+                        }
+                        if !BaggageLimit.allCases.map(\.grams).contains(defaultLimitGrams) {
+                            Text("Из настроек · \(WeightFormatter.string(grams: defaultLimitGrams))")
+                                .tag(defaultLimitGrams)
                         }
                     }
                     .pickerStyle(.inline)
@@ -144,7 +157,7 @@ struct NewTripSheet: View {
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Создать") {
-                        onCreate(title, destination, kind, startDate, endDate, limit.grams)
+                        onCreate(title, destination, kind, startDate, endDate, limitGrams)
                         dismiss()
                     }
                     .disabled(destination.trimmingCharacters(in: .whitespaces).isEmpty)

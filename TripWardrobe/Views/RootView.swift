@@ -1,21 +1,30 @@
 import SwiftUI
 
-/// Корневой экран приложения: два раздела — гардероб и поездки.
+/// Корневой экран приложения: гардероб, поездки и настройки.
 ///
 /// Модели представления создаются один раз и живут столько же, сколько экран,
 /// поэтому состояние (строка поиска, фильтры) сохраняется при переключении вкладок.
 struct RootView: View {
     private let services: ServiceContainer
+    private let settings: AppSettings
+    private let repository: SwiftDataRepository
+    private let onResync: () async -> Void
 
     @State private var wardrobeViewModel: WardrobeListViewModel
     @State private var tripsViewModel: TripListViewModel
 
-    init(services: ServiceContainer) {
+    init(services: ServiceContainer,
+         settings: AppSettings,
+         repository: SwiftDataRepository,
+         onResync: @escaping () async -> Void) {
         self.services = services
+        self.settings = settings
+        self.repository = repository
+        self.onResync = onResync
         _wardrobeViewModel = State(initialValue:
             WardrobeListViewModel(repository: services.repository))
         _tripsViewModel = State(initialValue:
-            TripListViewModel(repository: services.repository))
+            TripListViewModel(repository: services.repository, settings: settings))
     }
 
     var body: some View {
@@ -25,6 +34,9 @@ struct RootView: View {
 
             tripsTab
                 .tabItem { Label("Поездки", systemImage: "suitcase") }
+
+            settingsTab
+                .tabItem { Label("Настройки", systemImage: "gearshape") }
         }
     }
 
@@ -73,8 +85,14 @@ struct RootView: View {
                 }
         }
     }
-}
 
-#Preview {
-    RootView(services: ServiceContainer())
+    // MARK: - Вкладка «Настройки»
+
+    private var settingsTab: some View {
+        NavigationStack {
+            SettingsView(settings: settings,
+                         repository: repository,
+                         onResync: onResync)
+        }
+    }
 }

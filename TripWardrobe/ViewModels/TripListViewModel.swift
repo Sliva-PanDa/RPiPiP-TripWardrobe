@@ -1,4 +1,4 @@
-﻿import Foundation
+import Foundation
 import Observation
 
 /// Модель представления списка поездок.
@@ -6,11 +6,14 @@ import Observation
 final class TripListViewModel {
 
     private let repository: any TripStoring
+    /// Настройки из UserDefaults: отсюда берётся лимит веса для новой поездки.
+    private let settings: AppSettings
 
     var isNewTripPresented = false
 
-    init(repository: any TripStoring) {
+    init(repository: any TripStoring, settings: AppSettings) {
         self.repository = repository
+        self.settings = settings
     }
 
     var trips: [Trip] {
@@ -18,6 +21,9 @@ final class TripListViewModel {
     }
 
     var isEmpty: Bool { repository.trips.isEmpty }
+
+    /// Лимит веса по умолчанию для формы создания поездки.
+    var defaultLimitGrams: Int { settings.defaultLimitGrams }
 
     func trip(id: Trip.ID) -> Trip? { repository.trip(id: id) }
 
@@ -28,7 +34,7 @@ final class TripListViewModel {
         }
     }
 
-    /// Создаёт пустую поездку и возвращает её — экран сразу открывает карточку.
+    /// Создаёт поездку и сохраняет её в хранилище.
     @discardableResult
     func createTrip(title: String,
                     destination: String,
