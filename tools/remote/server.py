@@ -20,6 +20,7 @@ import json
 import os
 import secrets
 import subprocess
+import tempfile
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -65,27 +66,41 @@ def detect_point_size() -> tuple[float, float]:
 
 
 def grab_loop() -> None:
-    """Фоновый поток: раз в полсекунды снимает экран симулятора."""
+    """Фоновый поток: раз в полсекунды снимает экран симулятора.
+
+    Снимок пишется во временный файл, а не в стандартный вывод: не все
+    версии simctl умеют отдавать PNG в поток.
+    """
     global _frame
+    path = os.path.join(tempfile.gettempdir(), "tripwardrobe-frame.png")
     while True:
         try:
             result = _run(
-                ["xcrun", "simctl", "io", UDID, "screenshot", "--type=png", "-"],
+                ["xcrun", "simctl", "io", UDID, "screenshot", "--type=png", path],
                 timeout=15,
             )
-            if result.returncode == 0 and result.stdout:
-                with _frame_lock:
-                    _frame = result.stdout
-        except Exception:
-            pass
+            if result.returncode == 0 and os.path.exists(path):
+                with open(path, "rb") as handle:
+                    data = handle.read()
+                if data:
+                    with _frame_lock:
+                        _frame = data
+            elif result.returncode != 0:
+                print("simctl screenshot:", result.stderr.decode()[:200], flush=True)
+        except Exception as error:
+            print("Сбой снятия экрана:", error, flush=True)
         time.sleep(0.5)
 
 
 def idb(*arguments: str) -> None:
+    """Команда «idb ui <действие> --udid <udid> <аргументы>»."""
+    action, rest = arguments[0], arguments[1:]
     try:
-        _run(["idb", "ui", *arguments, "--udid", UDID])
-    except Exception:
-        pass
+        result = _run(["idb", "ui", action, "--udid", UDID, *rest])
+        if result.returncode != 0:
+            print("idb ui", action, "->", result.stderr.decode()[:200], flush=True)
+    except Exception as error:
+        print("Сбой idb:", error, flush=True)
 
 
 def to_points(x: float, y: float) -> tuple[float, float]:

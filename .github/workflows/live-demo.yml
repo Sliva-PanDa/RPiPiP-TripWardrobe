@@ -36,11 +36,18 @@ jobs:
       - name: Установить XcodeGen, idb и cloudflared
         run: |
           brew install xcodegen cloudflared
+
+          # idb лежит в стороннем репозитории формул, его нужно явно доверить.
           brew tap facebook/fb
-          brew install idb-companion
+          brew trust facebook/fb || brew trust --formula facebook/fb/idb-companion || true
+          brew install facebook/fb/idb-companion
+
           python -m pip install --upgrade pip
           python -m pip install fb-idb
-          idb --help >/dev/null 2>&1 && echo "idb установлен"
+
+          echo "--- проверка ---"
+          idb_companion --version || true
+          idb --help >/dev/null 2>&1 && echo "idb установлен" || echo "idb НЕ установлен"
 
       - name: Сгенерировать проект Xcode
         run: xcodegen generate --spec project.yml
@@ -109,7 +116,15 @@ jobs:
 
       - name: Запустить веб-пульт
         run: |
+          # Поднять связь с симулятором и убедиться, что управление работает.
           idb list-targets || true
+          idb connect "${{ steps.sim.outputs.udid }}" || true
+          echo "--- describe ---"
+          idb describe --udid "${{ steps.sim.outputs.udid }}" --json | head -c 600 || true
+          echo
+          echo "--- пробное нажатие ---"
+          idb ui tap --udid "${{ steps.sim.outputs.udid }}" 200 400 && echo "управление работает" || echo "УПРАВЛЕНИЕ НЕ РАБОТАЕТ"
+
           SIM_UDID="${{ steps.sim.outputs.udid }}" \
           REMOTE_PASSWORD="${{ steps.secret.outputs.password }}" \
           BUNDLE_ID="by.gstu.itp41.TripWardrobe" \
