@@ -1,0 +1,173 @@
+name: Запустить приложение в браузере
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Ветка проекта (main, lab1, lab2, lab3, lab4)"
+        default: "main"
+        required: true
+      device:
+        description: "Устройство"
+        type: choice
+        options: [iPhone, iPad]
+        default: iPhone
+      minutes:
+        description: "Сколько минут держать сеанс (до 90)"
+        default: "60"
+
+jobs:
+  remote:
+    name: remote
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    steps:
+      - name: Получить исходный код
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+
+      - name: Установить Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Установить XcodeGen, idb и cloudflared
+        run: |
+          brew install xcodegen cloudflared
+          brew tap facebook/fb
+          brew install idb-companion
+          python -m pip install --upgrade pip
+          python -m pip install fb-idb
+          idb --help >/dev/null 2>&1 && echo "idb установлен"
+
+      - name: Сгенерировать проект Xcode
+        run: xcodegen generate --spec project.yml
+
+      - name: Подобрать симулятор
+        id: sim
+        run: |
+          python3 <<'PY' >> "$GITHUB_OUTPUT"
+          import json, os, subprocess, sys
+
+          family = os.environ["DEVICE"]
+          data = json.loads(subprocess.check_output(
+              ["xcrun", "simctl", "list", "devices", "available", "-j"]))
+
+          available = []
+          for runtime, devices in data["devices"].items():
+              if "iOS" in runtime:
+                  available.extend(d for d in devices if d.get("isAvailable"))
+
+          preferred = {
+              "iPhone": ["iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15"],
+              "iPad": ["iPad Pro 13-inch (M4)", "iPad Pro 11-inch (M4)",
+                       "iPad Air 13-inch (M2)", "iPad Air (5th generation)"],
+          }[family]
+
+          for name in preferred:
+              for device in available:
+                  if device["name"] == name:
+                      print(f"udid={device['udid']}")
+                      print(f"name={device['name']}")
+                      sys.exit(0)
+          for device in available:
+              if device["name"].startswith(family):
+                  print(f"udid={device['udid']}")
+                  print(f"name={device['name']}")
+                  sys.exit(0)
+          sys.exit(f"Не найден симулятор {family}")
+          PY
+        env:
+          DEVICE: ${{ inputs.device }}
+
+      - name: Собрать и установить приложение
+        run: |
+          set -e
+          xcodebuild build \
+            -project TripWardrobe.xcodeproj \
+            -scheme TripWardrobe \
+            -configuration Debug \
+            -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO
+
+          xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
+          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+
+          APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
+          echo "Приложение: $APP"
+          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
+          xcrun simctl launch "${{ steps.sim.outputs.udid }}" by.gstu.itp41.TripWardrobe
+
+      - name: Сгенерировать пароль
+        id: secret
+        run: |
+          PASS=$(python3 -c "import secrets,string; print(''.join(secrets.choice(string.ascii_uppercase+string.digits) for _ in range(4))+'-'+''.join(secrets.choice(string.ascii_uppercase+string.digits) for _ in range(4)))")
+          echo "password=$PASS" >> "$GITHUB_OUTPUT"
+
+      - name: Запустить веб-пульт
+        run: |
+          idb list-targets || true
+          SIM_UDID="${{ steps.sim.outputs.udid }}" \
+          REMOTE_PASSWORD="${{ steps.secret.outputs.password }}" \
+          BUNDLE_ID="by.gstu.itp41.TripWardrobe" \
+          PORT=8080 \
+          nohup python3 tools/remote/server.py > remote-server.log 2>&1 &
+          for i in $(seq 1 40); do
+            if curl -sf -o /dev/null http://127.0.0.1:8080/; then
+              echo "Пульт отвечает"; break
+            fi
+            sleep 1
+          done
+          cat remote-server.log || true
+
+      - name: Открыть внешний адрес
+        id: tunnel
+        run: |
+          nohup cloudflared tunnel --no-autoupdate --url http://127.0.0.1:8080 \
+            > tunnel.log 2>&1 &
+          URL=""
+          for i in $(seq 1 60); do
+            URL=$(grep -Eo 'https://[a-z0-9-]+\.trycloudflare\.com' tunnel.log | head -1 || true)
+            [ -n "$URL" ] && break
+            sleep 2
+          done
+          if [ -z "$URL" ]; then
+            echo "Не удалось поднять туннель:"; cat tunnel.log; exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+
+      - name: ССЫЛКА НА ПРИЛОЖЕНИЕ (нажмите сюда)
+        run: |
+          {
+            echo "## Приложение «Гардероб» запущено"
+            echo
+            echo "# [ОТКРЫТЬ ПРИЛОЖЕНИЕ](${{ steps.tunnel.outputs.url }})"
+            echo
+            echo "Адрес: ${{ steps.tunnel.outputs.url }}"
+            echo
+            echo "**Пароль:** \`${{ steps.secret.outputs.password }}\`"
+            echo
+            echo "Устройство: ${{ steps.sim.outputs.name }} · ветка \`${{ inputs.ref }}\`"
+            echo
+            echo "Сеанс работает ${{ inputs.minutes }} мин, затем отключается сам."
+            echo "Закончить раньше — кнопка **Cancel workflow** справа вверху."
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "==========================================================="
+          echo "  ССЫЛКА: ${{ steps.tunnel.outputs.url }}"
+          echo "  ПАРОЛЬ: ${{ steps.secret.outputs.password }}"
+          echo "==========================================================="
+
+      - name: Держать сеанс открытым
+        run: |
+          MINUTES=$(( ${{ inputs.minutes }} ))
+          [ "$MINUTES" -gt 90 ] && MINUTES=90
+          echo "Сеанс продлится $MINUTES мин. Досрочно — кнопка Cancel workflow."
+          sleep $(( MINUTES * 60 ))
+
+      - name: Журнал пульта
+        if: always()
+        run: tail -60 remote-server.log || true

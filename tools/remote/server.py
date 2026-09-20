@@ -1,0 +1,322 @@
+#!/usr/bin/env python3
+"""Веб-пульт для симулятора iOS, запущенного на раннере GitHub Actions.
+
+Сервер отдаёт страницу с изображением экрана симулятора и передаёт обратно
+нажатия мыши и клавиатуры. Снимки экрана снимаются командой
+``xcrun simctl io <udid> screenshot``, события ввода отправляются утилитой
+``idb ui`` (tap, swipe, text, key, button).
+
+Переменные окружения:
+    SIM_UDID          — идентификатор загруженного симулятора (обязательно);
+    REMOTE_PASSWORD   — пароль страницы;
+    BUNDLE_ID         — идентификатор приложения для перезапуска;
+    PORT              — порт (по умолчанию 8080).
+"""
+
+from __future__ import annotations
+
+import http.cookies
+import json
+import os
+import secrets
+import subprocess
+import threading
+import time
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from urllib.parse import unquote_plus
+
+UDID = os.environ["SIM_UDID"]
+PASSWORD = os.environ.get("REMOTE_PASSWORD", "demo")
+BUNDLE_ID = os.environ.get("BUNDLE_ID", "by.gstu.itp41.TripWardrobe")
+PORT = int(os.environ.get("PORT", "8080"))
+
+# HID-коды клавиш для команды «idb ui key».
+KEY_BACKSPACE = 42
+KEY_RETURN = 40
+
+_frame: bytes = b""
+_frame_lock = threading.Lock()
+_sessions: set[str] = set()
+
+# Размер экрана в точках — в них измеряются координаты для idb.
+_point_size = (393.0, 852.0)
+
+
+# --------------------------------------------------------------------------- #
+# Работа с симулятором
+# --------------------------------------------------------------------------- #
+
+def _run(command: list[str], timeout: float = 25) -> subprocess.CompletedProcess:
+    return subprocess.run(command, capture_output=True, timeout=timeout)
+
+
+def detect_point_size() -> tuple[float, float]:
+    """Размер экрана в точках: пиксели снимка, делённые на масштаб."""
+    try:
+        result = _run(["idb", "describe", "--udid", UDID, "--json"])
+        payload = json.loads(result.stdout.decode() or "{}")
+        screen = payload.get("screen_dimensions") or {}
+        width, height = float(screen["width"]), float(screen["height"])
+        density = float(screen.get("density") or 1.0) or 1.0
+        return width / density, height / density
+    except Exception as error:
+        print("Не удалось определить размер экрана:", error, flush=True)
+        return _point_size
+
+
+def grab_loop() -> None:
+    """Фоновый поток: раз в полсекунды снимает экран симулятора."""
+    global _frame
+    while True:
+        try:
+            result = _run(
+                ["xcrun", "simctl", "io", UDID, "screenshot", "--type=png", "-"],
+                timeout=15,
+            )
+            if result.returncode == 0 and result.stdout:
+                with _frame_lock:
+                    _frame = result.stdout
+        except Exception:
+            pass
+        time.sleep(0.5)
+
+
+def idb(*arguments: str) -> None:
+    try:
+        _run(["idb", "ui", *arguments, "--udid", UDID])
+    except Exception:
+        pass
+
+
+def to_points(x: float, y: float) -> tuple[float, float]:
+    """Из долей ширины и высоты экрана — в точки."""
+    width, height = _point_size
+    return max(0.0, min(1.0, x)) * width, max(0.0, min(1.0, y)) * height
+
+
+# --------------------------------------------------------------------------- #
+# Страницы
+# --------------------------------------------------------------------------- #
+
+LOGIN_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Вход</title><style>
+:root{color-scheme:light dark}
+body{font:16px/1.5 -apple-system,"Segoe UI",system-ui,sans-serif;
+ display:grid;place-items:center;min-height:100vh;margin:0}
+form{display:grid;gap:.8rem;width:min(22rem,90vw)}
+input,button{font:inherit;padding:.7rem .9rem;border-radius:.6rem;
+ border:1px solid rgba(127,127,127,.5)}
+button{background:#2f6fed;color:#fff;border:0;cursor:pointer}
+p{color:#c00;margin:0}
+</style></head><body>
+<form method="post" action="/login">
+  <h1 style="font-size:1.2rem;margin:0">Приложение «Гардероб»</h1>
+  <input type="password" name="password" placeholder="Пароль" autofocus>
+  <button type="submit">Войти</button>
+  __ERROR__
+</form></body></html>"""
+
+APP_PAGE = """<!doctype html><html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Гардероб — симулятор</title><style>
+:root{color-scheme:dark}
+body{margin:0;background:#101014;color:#eee;font:15px/1.4 -apple-system,
+ "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;
+ min-height:100vh;gap:.8rem;padding:1rem;box-sizing:border-box}
+#screen{max-height:78vh;border-radius:1.6rem;border:2px solid #333;
+ background:#000;touch-action:none;cursor:pointer;display:block}
+#bar{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center}
+button{font:inherit;padding:.5rem .9rem;border-radius:.6rem;border:0;
+ background:#2a2a32;color:#eee;cursor:pointer}
+button:hover{background:#3a3a45}
+#hint{opacity:.6;font-size:.85rem;text-align:center;max-width:34rem}
+</style></head><body>
+<img id="screen" alt="Экран симулятора">
+<div id="bar">
+  <button onclick="key('backspace')">⌫ Стереть</button>
+  <button onclick="key('return')">Enter</button>
+  <button onclick="post('/home')">Домой</button>
+  <button onclick="post('/relaunch')">Перезапустить приложение</button>
+</div>
+<p id="hint">Щёлкайте мышью как пальцем, перетаскивайте для прокрутки.
+Чтобы ввести текст, нажмите на поле в приложении и печатайте на клавиатуре.
+Картинка обновляется с задержкой около секунды.</p>
+<script>
+const screen = document.getElementById('screen');
+
+async function refresh() {
+  try {
+    const response = await fetch('/frame.png?' + Date.now(), {cache: 'no-store'});
+    if (response.ok) {
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const previous = screen.src;
+      screen.src = url;
+      if (previous.startsWith('blob:')) URL.revokeObjectURL(previous);
+    }
+  } catch (error) { /* сеанс мог завершиться */ }
+  setTimeout(refresh, 700);
+}
+refresh();
+
+function post(path, body) {
+  return fetch(path, {method: 'POST', headers: {'Content-Type': 'application/json'},
+                      body: JSON.stringify(body || {})});
+}
+function key(name) { post('/key', {key: name}); }
+
+function position(event) {
+  const box = screen.getBoundingClientRect();
+  return {x: (event.clientX - box.left) / box.width,
+          y: (event.clientY - box.top) / box.height};
+}
+
+let start = null;
+screen.addEventListener('pointerdown', event => { start = position(event); });
+screen.addEventListener('pointerup', event => {
+  if (!start) return;
+  const end = position(event);
+  const distance = Math.hypot(end.x - start.x, end.y - start.y);
+  if (distance < 0.02) post('/tap', end);
+  else post('/swipe', {x1: start.x, y1: start.y, x2: end.x, y2: end.y});
+  start = null;
+});
+
+document.addEventListener('keydown', event => {
+  if (event.metaKey || event.ctrlKey || event.altKey) return;
+  if (event.key === 'Backspace') { event.preventDefault(); key('backspace'); }
+  else if (event.key === 'Enter') { event.preventDefault(); key('return'); }
+  else if (event.key.length === 1) { event.preventDefault(); post('/text', {text: event.key}); }
+});
+</script></body></html>"""
+
+
+# --------------------------------------------------------------------------- #
+# HTTP-обработчик
+# --------------------------------------------------------------------------- #
+
+class Handler(BaseHTTPRequestHandler):
+    protocol_version = "HTTP/1.1"
+
+    def log_message(self, *args):  # тише в журнале раннера
+        pass
+
+    # -- вспомогательное -------------------------------------------------- #
+
+    def _authorized(self) -> bool:
+        raw = self.headers.get("Cookie")
+        if not raw:
+            return False
+        cookie = http.cookies.SimpleCookie(raw)
+        token = cookie.get("sid")
+        return bool(token and token.value in _sessions)
+
+    def _send(self, status: int, body: bytes, content_type: str, headers=None) -> None:
+        self.send_response(status)
+        self.send_header("Content-Type", content_type)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        for name, value in (headers or {}).items():
+            self.send_header(name, value)
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _html(self, page: str, status: int = 200, headers=None) -> None:
+        self._send(status, page.encode("utf-8"), "text/html; charset=utf-8", headers)
+
+    def _json_body(self) -> dict:
+        length = int(self.headers.get("Content-Length") or 0)
+        if not length:
+            return {}
+        try:
+            return json.loads(self.rfile.read(length).decode("utf-8"))
+        except Exception:
+            return {}
+
+    # -- маршруты --------------------------------------------------------- #
+
+    def do_GET(self) -> None:
+        path = self.path.split("?", 1)[0]
+
+        if path == "/frame.png":
+            if not self._authorized():
+                return self._send(403, b"", "text/plain")
+            with _frame_lock:
+                data = _frame
+            return self._send(200, data, "image/png")
+
+        if path != "/":
+            return self._send(404, b"", "text/plain")
+
+        if self._authorized():
+            return self._html(APP_PAGE)
+        return self._html(LOGIN_PAGE.replace("__ERROR__", ""))
+
+    def do_POST(self) -> None:
+        path = self.path.split("?", 1)[0]
+
+        if path == "/login":
+            length = int(self.headers.get("Content-Length") or 0)
+            raw = self.rfile.read(length).decode("utf-8")
+            entered = ""
+            for pair in raw.split("&"):
+                name, _, value = pair.partition("=")
+                if name == "password":
+                    entered = unquote_plus(value)
+            if entered != PASSWORD:
+                return self._html(
+                    LOGIN_PAGE.replace("__ERROR__", "<p>Неверный пароль</p>"), status=401)
+            token = secrets.token_urlsafe(24)
+            _sessions.add(token)
+            return self._html(
+                APP_PAGE,
+                headers={"Set-Cookie": f"sid={token}; Path=/; HttpOnly; SameSite=Lax"})
+
+        if not self._authorized():
+            return self._send(403, b"", "text/plain")
+
+        payload = self._json_body()
+
+        if path == "/tap":
+            x, y = to_points(float(payload.get("x", 0)), float(payload.get("y", 0)))
+            idb("tap", f"{x:.1f}", f"{y:.1f}")
+        elif path == "/swipe":
+            x1, y1 = to_points(float(payload.get("x1", 0)), float(payload.get("y1", 0)))
+            x2, y2 = to_points(float(payload.get("x2", 0)), float(payload.get("y2", 0)))
+            idb("swipe", f"{x1:.1f}", f"{y1:.1f}", f"{x2:.1f}", f"{y2:.1f}",
+                "--duration", "0.25")
+        elif path == "/text":
+            text = str(payload.get("text", ""))[:80]
+            if text:
+                idb("text", text)
+        elif path == "/key":
+            name = str(payload.get("key", ""))
+            code = {"backspace": KEY_BACKSPACE, "return": KEY_RETURN}.get(name)
+            if code:
+                idb("key", str(code))
+        elif path == "/home":
+            idb("button", "HOME")
+        elif path == "/relaunch":
+            _run(["xcrun", "simctl", "terminate", UDID, BUNDLE_ID])
+            _run(["xcrun", "simctl", "launch", UDID, BUNDLE_ID])
+        else:
+            return self._send(404, b"", "text/plain")
+
+        return self._send(200, b"{}", "application/json")
+
+
+def main() -> None:
+    global _point_size
+    _point_size = detect_point_size()
+    print(f"Размер экрана: {_point_size[0]:.0f}x{_point_size[1]:.0f} точек", flush=True)
+
+    threading.Thread(target=grab_loop, daemon=True).start()
+
+    server = ThreadingHTTPServer(("127.0.0.1", PORT), Handler)
+    print(f"Пульт слушает порт {PORT}", flush=True)
+    server.serve_forever()
+
+
+if __name__ == "__main__":
+    main()
