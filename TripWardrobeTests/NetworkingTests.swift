@@ -14,7 +14,7 @@ final class StubURLProtocol: URLProtocol {
 
     override func startLoading() {
         guard let handler = Self.handler else {
-            client?.didFailWithError(URLError(.badServerResponse))
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
             return
         }
         do {
