@@ -1,10 +1,12 @@
+import Combine
 import Foundation
 
-/// Локальный источник прогноза погоды для лабораторной работы № 2.
+/// Локальный источник прогноза погоды.
 ///
-/// Модель представления работает с протоколом `WeatherProviding` и не знает,
-/// откуда берутся данные. В лабораторной работе № 4 эта реализация будет
-/// заменена на сетевую (REST API + Combine) без правок слоя представления.
+/// Используется как резервный вариант, когда сетевой сервис недоступен,
+/// и в модульных тестах, где обращение к сети недопустимо. Реализует тот же
+/// протокол `WeatherProviding`, что и сетевая реализация, поэтому подменяется
+/// без правок моделей представления.
 final class StubWeatherService: WeatherProviding {
 
     /// Заранее известные города с характерной погодой.
@@ -20,15 +22,20 @@ final class StubWeatherService: WeatherProviding {
     ]
 
     /// Искусственная задержка, имитирующая обращение к сети.
-    private let latency: Duration
+    private let latency: DispatchQueue.SchedulerTimeType.Stride
 
-    init(latency: Duration = .milliseconds(400)) {
+    init(latency: DispatchQueue.SchedulerTimeType.Stride = .milliseconds(400)) {
         self.latency = latency
     }
 
-    func forecast(city: String) async throws -> WeatherSnapshot {
-        try await Task.sleep(for: latency)
+    func forecastPublisher(city: String) -> AnyPublisher<WeatherSnapshot, NetworkError> {
+        Just(snapshot(for: city))
+            .setFailureType(to: NetworkError.self)
+            .delay(for: latency, scheduler: DispatchQueue.main)
+            .eraseToAnyPublisher()
+    }
 
+    private func snapshot(for city: String) -> WeatherSnapshot {
         let key = city.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         if let snapshot = table[key] {
             return snapshot

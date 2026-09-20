@@ -23,7 +23,7 @@ LAB_SCREENS = {
              "11-trip-packed", "12-limit-switch"],
     "lab3": ["13-settings", "14-settings-storage",
              "15-appearance-dark", "16-wardrobe-dark"],
-    "lab4": ["17-sync", "18-export", "19-share", "20-offline"],
+    "lab4": ["17-catalog-rest", "18-live-search", "19-checklist", "20-export-file"],
 }
 
 # iphone-01-home_0_2733F634-....png  ->  iphone-01-home

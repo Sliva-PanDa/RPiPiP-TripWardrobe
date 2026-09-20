@@ -8,6 +8,7 @@ struct RootView: View {
     private let services: ServiceContainer
     private let settings: AppSettings
     private let repository: SwiftDataRepository
+    private let catalogProvider: FallbackCatalogProvider
     private let onResync: () async -> Void
 
     @State private var wardrobeViewModel: WardrobeListViewModel
@@ -16,10 +17,12 @@ struct RootView: View {
     init(services: ServiceContainer,
          settings: AppSettings,
          repository: SwiftDataRepository,
+         catalogProvider: FallbackCatalogProvider,
          onResync: @escaping () async -> Void) {
         self.services = services
         self.settings = settings
         self.repository = repository
+        self.catalogProvider = catalogProvider
         self.onResync = onResync
         _wardrobeViewModel = State(initialValue:
             WardrobeListViewModel(repository: services.repository))
@@ -92,6 +95,7 @@ struct RootView: View {
         NavigationStack {
             SettingsView(settings: settings,
                          repository: repository,
+                         catalogProvider: catalogProvider,
                          onResync: onResync)
         }
     }

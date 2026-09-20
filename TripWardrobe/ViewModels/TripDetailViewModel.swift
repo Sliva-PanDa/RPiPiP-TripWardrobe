@@ -1,4 +1,5 @@
-﻿import Foundation
+﻿import Combine
+import Foundation
 import Observation
 
 /// Модель представления карточки поездки (чемодана).
@@ -32,6 +33,13 @@ final class TripDetailViewModel {
     private(set) var suggestions: [PackingSuggestion] = []
 
     var isAutoPackPresented = false
+    var isExportPresented = false
+    var isChecklistPreviewPresented = false
+
+    /// Подписки Combine. Если коллекцию не сохранить в модели представления,
+    /// подписка будет освобождена сразу после выхода из метода, и сетевой
+    /// запрос отменится, не успев доставить результат.
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
 
     init(trip: Trip,
          repository: any WardrobeProviding & TripStoring,
@@ -84,22 +92,35 @@ final class TripDetailViewModel {
 
     // MARK: - Погода
 
+    /// Подписка на издателя прогноза погоды.
+    ///
+    /// Значение и ошибка приходят в главный поток, состояние экрана
+    /// переключается в `.loaded` или `.failed`. Подписка сохраняется
+    /// в коллекции `cancellables`, поэтому живёт столько же, сколько экран.
     @MainActor
-    func loadWeather() async {
+    func loadWeather() {
         guard weatherState == .idle else { return }
         weatherState = .loading
-        do {
-            let snapshot = try await weatherService.forecast(city: trip.destination)
-            weatherState = .loaded(snapshot)
-        } catch {
-            weatherState = .failed(error.localizedDescription)
-        }
+
+        weatherService.forecastPublisher(city: trip.destination)
+            .receive(on: DispatchQueue.main)
+            .sink(
+                receiveCompletion: { [weak self] completion in
+                    if case .failure(let error) = completion {
+                        self?.weatherState = .failed(error.localizedDescription)
+                    }
+                },
+                receiveValue: { [weak self] snapshot in
+                    self?.weatherState = .loaded(snapshot)
+                }
+            )
+            .store(in: &cancellables)
     }
 
     @MainActor
-    func reloadWeather() async {
+    func reloadWeather() {
         weatherState = .idle
-        await loadWeather()
+        loadWeather()
     }
 
     // MARK: - Автоматическая сборка
@@ -168,6 +189,31 @@ final class TripDetailViewModel {
     func setLimit(_ grams: Int) {
         trip.limitGrams = grams
         persist()
+    }
+
+    // MARK: - Экспорт чек-листа
+
+    /// Чек-лист собранного чемодана для выгрузки в файл.
+    var checklist: PackingChecklist { PackingChecklist(trip: trip) }
+
+    var checklistDocument: ChecklistDocument { ChecklistDocument(checklist: checklist) }
+
+    var checklistFileName: String { checklist.fileName }
+
+    var canExport: Bool { !trip.items.isEmpty }
+
+    /// Размер получающегося файла — выводится в интерфейсе.
+    var checklistSizeTitle: String {
+        let bytes = (try? checklist.encoded().count) ?? 0
+        return ByteCountFormatter.string(fromByteCount: Int64(bytes), countStyle: .file)
+    }
+
+    func presentExport() {
+        isExportPresented = true
+    }
+
+    func presentChecklistPreview() {
+        isChecklistPreviewPresented = true
     }
 
     // MARK: - Сохранение

@@ -76,10 +76,12 @@ final class StorageTests: XCTestCase {
 
     /// Каталог из ресурсов приложения читается и содержит все сезоны.
     func testBundledCatalogIsReadable() async throws {
-        let provider = BundleCatalogProvider(bundle: Bundle(for: Self.self))
         // В тестовом бандле ресурса может не быть — тогда берём основной бандл.
-        let catalog = (try? await provider.loadCatalog())
-            ?? (try await BundleCatalogProvider(bundle: .main).loadCatalog())
+        var loaded = try? await BundleCatalogProvider(bundle: Bundle(for: Self.self)).loadCatalog()
+        if loaded == nil {
+            loaded = try await BundleCatalogProvider(bundle: .main).loadCatalog()
+        }
+        let catalog = try XCTUnwrap(loaded)
 
         XCTAssertEqual(catalog.seasons.count, 3)
         let items = catalog.seasons.flatMap { $0.looks.flatMap(\.items) }

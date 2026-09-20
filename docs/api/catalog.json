@@ -1,0 +1,93 @@
+{
+  "version": 3,
+  "updated_at": "2026-09-01T09:00:00Z",
+  "seasons": [
+    {
+      "season_id": "season-summer-casual",
+      "title": "Лето · Casual",
+      "icon": "sun.max",
+      "looks": [
+        {
+          "look_id": "look-city-walk",
+          "title": "Городская прогулка",
+          "occasion": "Повседневный",
+          "items": [
+            { "item_id": "item-tshirt-white", "title": "Футболка белая", "category": "Верх", "icon": "tshirt", "weight_grams": 180, "note": "хлопок, быстро сохнет", "status": "inCloset" },
+            { "item_id": "item-denim-shorts", "title": "Шорты джинсовые", "category": "Низ", "icon": "figure.stand", "weight_grams": 420, "status": "inCloset" },
+            { "item_id": "item-canvas-sneakers", "title": "Кеды парусиновые", "category": "Обувь", "icon": "figure.walk", "weight_grams": 760, "note": "постирать перед поездкой", "status": "inLaundry" },
+            { "item_id": "item-cap", "title": "Кепка", "category": "Аксессуары", "icon": "eyeglasses", "weight_grams": 90, "status": "inCloset" }
+          ]
+        },
+        {
+          "look_id": "look-beach-day",
+          "title": "Пляжный день",
+          "occasion": "Отдых",
+          "items": [
+            { "item_id": "item-swim-trunks", "title": "Плавки", "category": "Низ", "icon": "drop", "weight_grams": 120, "status": "inTrip" },
+            { "item_id": "item-linen-shirt", "title": "Рубашка льняная", "category": "Верх", "icon": "tshirt", "weight_grams": 240, "note": "лён, не мнётся в чемодане", "status": "inTrip" },
+            { "item_id": "item-beach-towel", "title": "Полотенце пляжное", "category": "Текстиль", "icon": "square.grid.2x2", "weight_grams": 480, "status": "inTrip" },
+            { "item_id": "item-flip-flops", "title": "Сланцы", "category": "Обувь", "icon": "figure.walk", "weight_grams": 310, "status": "inTrip" }
+          ]
+        }
+      ]
+    },
+    {
+      "season_id": "season-midseason-business",
+      "title": "Демисезон · Бизнес",
+      "icon": "briefcase",
+      "looks": [
+        {
+          "look_id": "look-business-meeting",
+          "title": "Деловая встреча",
+          "occasion": "Официальный",
+          "items": [
+            { "item_id": "item-wool-blazer", "title": "Пиджак шерстяной", "category": "Верх", "icon": "person.crop.square", "weight_grams": 980, "note": "везти на вешалке", "status": "inCloset" },
+            { "item_id": "item-dress-trousers", "title": "Брюки классические", "category": "Низ", "icon": "figure.stand", "weight_grams": 540, "status": "inCloset" },
+            { "item_id": "item-blue-shirt", "title": "Рубашка голубая", "category": "Верх", "icon": "tshirt", "weight_grams": 260, "status": "inLaundry" },
+            { "item_id": "item-oxford-shoes", "title": "Туфли оксфорды", "category": "Обувь", "icon": "figure.walk", "weight_grams": 1120, "status": "inCloset" },
+            { "item_id": "item-leather-belt", "title": "Ремень кожаный", "category": "Аксессуары", "icon": "minus.rectangle", "weight_grams": 180, "status": "inCloset" }
+          ]
+        },
+        {
+          "look_id": "look-smart-casual",
+          "title": "Smart casual",
+          "occasion": "Полуофициальный",
+          "items": [
+            { "item_id": "item-light-jumper", "title": "Джемпер тонкий", "category": "Верх", "icon": "tshirt", "weight_grams": 430, "status": "inCloset" },
+            { "item_id": "item-chinos", "title": "Чиносы бежевые", "category": "Низ", "icon": "figure.stand", "weight_grams": 500, "status": "inTrip" },
+            { "item_id": "item-loafers", "title": "Лоферы", "category": "Обувь", "icon": "figure.walk", "weight_grams": 890, "status": "inCloset" }
+          ]
+        }
+      ]
+    },
+    {
+      "season_id": "season-winter-mountains",
+      "title": "Зима · Горы",
+      "icon": "snowflake",
+      "looks": [
+        {
+          "look_id": "look-ski-day",
+          "title": "Горнолыжный день",
+          "occasion": "Спорт",
+          "items": [
+            { "item_id": "item-down-jacket", "title": "Пуховик", "category": "Верх", "icon": "cloud.snow", "weight_grams": 1450, "note": "сжимать в компрессионный мешок", "status": "inCloset" },
+            { "item_id": "item-thermal-base", "title": "Термобельё", "category": "Бельё", "icon": "thermometer.medium", "weight_grams": 280, "status": "inCloset" },
+            { "item_id": "item-insulated-pants", "title": "Брюки утеплённые", "category": "Низ", "icon": "figure.skiing.downhill", "weight_grams": 860, "status": "inCloset" },
+            { "item_id": "item-ski-gloves", "title": "Перчатки горнолыжные", "category": "Аксессуары", "icon": "hand.raised", "weight_grams": 220, "status": "inLaundry" },
+            { "item_id": "item-winter-boots", "title": "Ботинки зимние", "category": "Обувь", "icon": "figure.walk", "weight_grams": 1680, "note": "надевать в самолёт, экономит 1,7 кг", "status": "inCloset" }
+          ]
+        },
+        {
+          "look_id": "look-chalet-evening",
+          "title": "Вечер в шале",
+          "occasion": "Повседневный",
+          "items": [
+            { "item_id": "item-wool-sweater", "title": "Свитер шерстяной", "category": "Верх", "icon": "tshirt", "weight_grams": 620, "status": "inCloset" },
+            { "item_id": "item-warm-jeans", "title": "Джинсы утеплённые", "category": "Низ", "icon": "figure.stand", "weight_grams": 720, "status": "inCloset" },
+            { "item_id": "item-wool-socks", "title": "Носки шерстяные", "category": "Бельё", "icon": "thermometer", "weight_grams": 110, "status": "inLaundry" }
+          ]
+        }
+      ]
+    }
+  ]
+}

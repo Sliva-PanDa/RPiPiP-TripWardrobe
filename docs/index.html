@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TripWardrobe API</title>
+<style>
+  :root { color-scheme: light dark; }
+  body {
+    margin: 0; padding: 2rem 1rem;
+    font: 16px/1.6 -apple-system, "Segoe UI", system-ui, sans-serif;
+    max-width: 44rem; margin-inline: auto;
+  }
+  code { background: rgba(127,127,127,.18); padding: .15em .4em; border-radius: .3em; }
+  h1 { font-size: 1.5rem; }
+  table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
+  th, td { text-align: left; padding: .5rem .6rem; border-bottom: 1px solid rgba(127,127,127,.3); }
+</style>
+</head>
+<body>
+<h1>TripWardrobe — mock-сервер каталога</h1>
+<p>
+  Учебный REST-сервис для приложения «Цифровой гардероб и сборка чемодана»
+  (вариант 15, дисциплина «Разработка приложений для iPhone и iPad»,
+  ГГТУ им. П. О. Сухого).
+</p>
+<p>
+  Приложение обращается к этому адресу при каждом запуске и наполняет
+  локальную базу данных SwiftData, сохраняя данные пользователя.
+</p>
+<table>
+  <tr><th>Метод</th><th>Путь</th><th>Описание</th></tr>
+  <tr>
+    <td><code>GET</code></td>
+    <td><a href="api/catalog.json"><code>/api/catalog.json</code></a></td>
+    <td>Каталог сезонов, образов и вещей гардероба</td>
+  </tr>
+</table>
+<p>
+  Исходный код приложения:
+  <a href="https://github.com/Sliva-PanDa/RPiPiP-TripWardrobe">GitHub</a>.
+</p>
+</body>
+</html>

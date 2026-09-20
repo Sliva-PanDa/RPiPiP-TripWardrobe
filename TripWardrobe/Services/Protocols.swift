@@ -1,3 +1,4 @@
+import Combine
 import Foundation
 
 /// Чтение и изменение гардероба.
@@ -29,10 +30,12 @@ protocol TripStoring: AnyObject {
 }
 
 /// Источник прогноза погоды.
-/// В лабораторной работе № 2 используется локальная заглушка,
-/// в лабораторной работе № 4 — реализация поверх REST API и Combine.
+///
+/// Начиная с лабораторной работы № 4 интерфейс реактивный: сервис возвращает
+/// издателя Combine, на которого подписывается модель представления.
+/// Локальная заглушка и сетевая реализация поверх REST API взаимозаменяемы.
 protocol WeatherProviding: AnyObject {
-    func forecast(city: String) async throws -> WeatherSnapshot
+    func forecastPublisher(city: String) -> AnyPublisher<WeatherSnapshot, NetworkError>
 }
 
 /// Алгоритм автоматического формирования базового списка вещей.

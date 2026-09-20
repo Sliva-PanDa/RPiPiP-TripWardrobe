@@ -5,6 +5,7 @@ import SwiftUI
 struct SettingsView: View {
     @Bindable var settings: AppSettings
     let repository: SwiftDataRepository
+    let catalogProvider: FallbackCatalogProvider
     let onResync: () async -> Void
 
     @State private var isResyncing = false
@@ -13,6 +14,7 @@ struct SettingsView: View {
         Form {
             appearanceSection
             baggageSection
+            catalogSection
             storageSection
             serviceSection
         }
@@ -60,6 +62,42 @@ struct SettingsView: View {
             Text("Багаж")
         } footer: {
             Text("Подставляется в каждую новую поездку.")
+        }
+    }
+
+    // MARK: - Источник каталога
+
+    private var catalogSection: some View {
+        Section {
+            LabeledContent("Адрес") {
+                Text(API.catalog.absoluteString)
+                    .font(.caption.monospaced())
+                    .multilineTextAlignment(.trailing)
+                    .foregroundStyle(.secondary)
+            }
+            LabeledContent("Источник последней загрузки") {
+                Label(catalogProvider.lastSource.rawValue,
+                      systemImage: catalogProvider.lastSource == .network
+                          ? "antenna.radiowaves.left.and.right"
+                          : "internaldrive")
+                    .font(.caption)
+                    .foregroundStyle(catalogProvider.lastSource == .network ? .green : .orange)
+            }
+            .accessibilityIdentifier("catalogSource")
+
+            if let error = catalogProvider.lastError {
+                LabeledContent("Ошибка сети") {
+                    Text(error)
+                        .font(.caption)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(.secondary)
+                }
+            }
+        } header: {
+            Text("Каталог по REST API")
+        } footer: {
+            Text("Каталог запрашивается методом GET при каждом запуске приложения. "
+                 + "Если сервер недоступен, используется копия из ресурсов приложения.")
         }
     }
 

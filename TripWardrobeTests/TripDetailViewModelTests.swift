@@ -1,5 +1,13 @@
 import XCTest
+import Combine
 @testable import TripWardrobe
+
+/// Сервис погоды, всегда возвращающий ошибку — для проверки обработки сбоев.
+final class FailingWeatherService: WeatherProviding {
+    func forecastPublisher(city: String) -> AnyPublisher<WeatherSnapshot, NetworkError> {
+        Fail(error: NetworkError.serverError(503)).eraseToAnyPublisher()
+    }
+}
 
 /// Тесты модели представления карточки поездки: расчёт веса багажа,
 /// загрузка прогноза и автоматическая сборка.
@@ -22,6 +30,19 @@ final class TripDetailViewModelTests: XCTestCase {
                             repository: store,
                             weatherService: StubWeatherService(latency: .zero),
                             packingService: RuleBasedPackingService())
+    }
+
+    /// Ожидание выполнения условия с прокруткой главного цикла событий:
+    /// издатели Combine доставляют значения в главный поток.
+    private func waitUntil(timeout: TimeInterval = 5,
+                           file: StaticString = #filePath,
+                           line: UInt = #line,
+                           _ condition: () -> Bool) {
+        let deadline = Date().addingTimeInterval(timeout)
+        while !condition() && Date() < deadline {
+            RunLoop.current.run(until: Date().addingTimeInterval(0.02))
+        }
+        XCTAssertTrue(condition(), "Условие не выполнилось за \(timeout) с", file: file, line: line)
     }
 
     private func sampleTrip(limit: Int = BaggageLimit.cabin.grams,
@@ -128,13 +149,14 @@ final class TripDetailViewModelTests: XCTestCase {
 
     // MARK: - Погода
 
-    /// Прогноз загружается через сервис и попадает в состояние модели.
+    /// Прогноз приходит от издателя Combine и попадает в состояние модели.
     @MainActor
-    func testWeatherIsLoadedFromService() async {
+    func testWeatherIsLoadedFromPublisher() {
         let viewModel = makeViewModel(trip: sampleTrip())
         XCTAssertEqual(viewModel.weatherState, .idle)
 
-        await viewModel.loadWeather()
+        viewModel.loadWeather()
+        waitUntil { viewModel.weatherState.snapshot != nil }
 
         guard case .loaded(let snapshot) = viewModel.weatherState else {
             return XCTFail("Прогноз погоды не загружен")
@@ -144,13 +166,50 @@ final class TripDetailViewModelTests: XCTestCase {
         XCTAssertTrue(snapshot.isRainy)
     }
 
+    /// Ошибка издателя переводит экран в состояние `.failed`,
+    /// а не оставляет его в бесконечной загрузке.
+    @MainActor
+    func testWeatherFailureIsHandled() {
+        let viewModel = TripDetailViewModel(trip: sampleTrip(),
+                                            repository: store,
+                                            weatherService: FailingWeatherService(),
+                                            packingService: RuleBasedPackingService())
+        viewModel.loadWeather()
+        waitUntil {
+            if case .failed = viewModel.weatherState { return true }
+            return false
+        }
+
+        guard case .failed(let message) = viewModel.weatherState else {
+            return XCTFail("Ожидалось состояние ошибки")
+        }
+        XCTAssertFalse(message.isEmpty)
+    }
+
+    /// Резервный источник подставляется, когда основной сервис недоступен.
+    @MainActor
+    func testFallbackWeatherServiceUsesReserve() {
+        let service = FallbackWeatherService(primary: FailingWeatherService(),
+                                             reserve: StubWeatherService(latency: .zero))
+        let viewModel = TripDetailViewModel(trip: sampleTrip(),
+                                            repository: store,
+                                            weatherService: service,
+                                            packingService: RuleBasedPackingService())
+        viewModel.loadWeather()
+        waitUntil { viewModel.weatherState.snapshot != nil }
+
+        XCTAssertTrue(service.usedReserve)
+        XCTAssertEqual(viewModel.weatherState.snapshot?.city, "Вильнюс")
+    }
+
     // MARK: - Автоматическая сборка
 
     /// Автосборка наполняет чемодан и переводит вещи в статус «В поездке».
     @MainActor
-    func testAutomaticPackingFillsSuitcase() async {
+    func testAutomaticPackingFillsSuitcase() {
         let viewModel = makeViewModel(trip: sampleTrip())
-        await viewModel.loadWeather()
+        viewModel.loadWeather()
+        waitUntil { viewModel.weatherState.snapshot != nil }
 
         viewModel.buildSuggestions()
         XCTAssertFalse(viewModel.suggestions.isEmpty)
@@ -173,7 +232,7 @@ final class TripDetailViewModelTests: XCTestCase {
 
     /// Повторная автосборка не дублирует уже уложенные вещи.
     @MainActor
-    func testRepeatedPackingDoesNotDuplicate() async {
+    func testRepeatedPackingDoesNotDuplicate() {
         let viewModel = makeViewModel(trip: sampleTrip())
         viewModel.buildSuggestions()
         viewModel.applyAllSuggestions()

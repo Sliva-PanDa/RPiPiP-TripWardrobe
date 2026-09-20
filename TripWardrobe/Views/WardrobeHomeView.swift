@@ -132,13 +132,22 @@ struct WardrobeHomeView: View {
         let results = viewModel.searchResults
         if results.isEmpty {
             Section {
-                ContentUnavailableView.search(text: viewModel.searchText)
+                ContentUnavailableView.search(text: viewModel.debouncedQuery)
             }
         } else {
-            Section("Найдено: \(results.count)") {
+            Section {
                 ForEach(results) { placement in
                     NavigationLink(value: Route.item(placement.item.id)) {
-                        SearchResultRow(placement: placement, query: viewModel.searchText)
+                        SearchResultRow(placement: placement, query: viewModel.debouncedQuery)
+                    }
+                }
+            } header: {
+                HStack {
+                    Text("Найдено: \(results.count)")
+                    if viewModel.isTypingAhead {
+                        Spacer()
+                        ProgressView()
+                            .controlSize(.mini)
                     }
                 }
             }

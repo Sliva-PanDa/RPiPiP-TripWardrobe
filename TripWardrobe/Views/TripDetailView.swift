@@ -22,15 +22,23 @@ struct TripDetailView: View {
             if !viewModel.weightByCategory.isEmpty {
                 breakdownSection
             }
+            exportSection
         }
         .listStyle(.insetGrouped)
         .navigationTitle(viewModel.trip.title)
         .navigationBarTitleDisplayMode(.inline)
         .accessibilityIdentifier("tripDetail")
-        .task { await viewModel.loadWeather() }
+        .onAppear { viewModel.loadWeather() }
         .sheet(isPresented: $bindable.isAutoPackPresented) {
             AutoPackSheet(viewModel: viewModel)
         }
+        .sheet(isPresented: $bindable.isChecklistPreviewPresented) {
+            ChecklistPreviewSheet(viewModel: viewModel)
+        }
+        .fileExporter(isPresented: $bindable.isExportPresented,
+                      document: viewModel.checklistDocument,
+                      contentType: .json,
+                      defaultFilename: viewModel.checklistFileName) { _ in }
     }
 
     // MARK: - Вес багажа
@@ -175,6 +183,38 @@ struct TripDetailView: View {
         }
     }
 
+    // MARK: - Экспорт чек-листа
+
+    private var exportSection: some View {
+        Section {
+            Button {
+                viewModel.presentChecklistPreview()
+            } label: {
+                Label("Показать чек-лист", systemImage: "list.bullet.clipboard")
+            }
+            .disabled(!viewModel.canExport)
+            .accessibilityIdentifier("previewChecklist")
+
+            Button {
+                viewModel.presentExport()
+            } label: {
+                LabeledContent {
+                    Text(viewModel.checklistSizeTitle)
+                        .foregroundStyle(.secondary)
+                } label: {
+                    Label("Сохранить файл чек-листа", systemImage: "square.and.arrow.up")
+                }
+            }
+            .disabled(!viewModel.canExport)
+            .accessibilityIdentifier("exportChecklist")
+        } header: {
+            Text("Обмен с попутчиками")
+        } footer: {
+            Text("Чек-лист выгружается отдельным файлом в формате JSON: "
+                 + "его можно переслать попутчику или открыть в другом приложении.")
+        }
+    }
+
     // MARK: - Разбивка веса по категориям
 
     private var breakdownSection: some View {
@@ -272,6 +312,38 @@ struct AutoPackSheet: View {
                     }
                     .disabled(viewModel.suggestions.isEmpty)
                     .accessibilityIdentifier("applyAll")
+                }
+            }
+        }
+    }
+}
+
+/// Предварительный просмотр чек-листа перед выгрузкой в файл.
+struct ChecklistPreviewSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    let viewModel: TripDetailViewModel
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                Text(viewModel.checklist.plainText)
+                    .font(.callout.monospaced())
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .textSelection(.enabled)
+                    .padding()
+            }
+            .navigationTitle("Чек-лист чемодана")
+            .navigationBarTitleDisplayMode(.inline)
+            .accessibilityIdentifier("checklistPreview")
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Закрыть") { dismiss() }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    ShareLink(item: viewModel.checklist.plainText) {
+                        Label("Поделиться", systemImage: "square.and.arrow.up")
+                    }
+                    .accessibilityIdentifier("shareChecklist")
                 }
             }
         }

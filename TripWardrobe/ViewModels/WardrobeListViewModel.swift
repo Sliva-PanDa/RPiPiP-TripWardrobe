@@ -1,4 +1,5 @@
-﻿import Foundation
+import Combine
+import Foundation
 import Observation
 
 /// Модель представления главного экрана гардероба.
@@ -6,24 +7,61 @@ import Observation
 /// Хранит состояние экрана (строка поиска, выбранные статусы, раскрытые образы)
 /// и предоставляет представлению уже готовые к выводу данные. Доступ к гардеробу
 /// идёт только через протокол `WardrobeProviding`.
+///
+/// Ввод в строке поиска пропускается через конвейер Combine: оператор
+/// `debounce` откладывает обработку на 300 мс, а `removeDuplicates`
+/// отбрасывает повторяющиеся значения. Поэтому при быстром наборе
+/// выборка выполняется один раз, а не на каждое нажатие клавиши.
 @Observable
 final class WardrobeListViewModel {
 
-    private let repository: any WardrobeProviding
+    @ObservationIgnored private let repository: any WardrobeProviding
 
-    var searchText: String = ""
+    var searchText: String = "" {
+        didSet {
+            guard searchText != oldValue else { return }
+            querySubject.send(searchText)
+        }
+    }
+
     var statusFilter: Set<ItemStatus> = []
     var expandedLooks: Set<Look.ID> = []
 
-    init(repository: any WardrobeProviding) {
+    /// Запрос, дошедший до выборки после задержки ввода.
+    private(set) var debouncedQuery: String = ""
+    /// Счётчик выполненных выборок — используется в тестах конвейера.
+    private(set) var queryCount = 0
+
+    @ObservationIgnored private let querySubject = CurrentValueSubject<String, Never>("")
+    @ObservationIgnored private var cancellables = Set<AnyCancellable>()
+
+    init(repository: any WardrobeProviding,
+         debounce: DispatchQueue.SchedulerTimeType.Stride = .milliseconds(300)) {
         self.repository = repository
+
+        querySubject
+            // Задержка ввода: выборка запускается, когда пользователь остановился.
+            .debounce(for: debounce, scheduler: DispatchQueue.main)
+            // Исключение дублирующих запросов с одинаковым текстом.
+            .removeDuplicates()
+            .sink { [weak self] query in
+                self?.debouncedQuery = query
+                self?.queryCount += 1
+            }
+            .store(in: &cancellables)
     }
 
     // MARK: - Производные данные для представления
 
+    /// Экран показывает результаты поиска, а не иерархию.
+    /// Признак считается по запросу, дошедшему до выборки, поэтому
+    /// содержимое экрана не дёргается на каждое нажатие клавиши.
     var isSearching: Bool {
-        !searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        !debouncedQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
+
+    /// Пользователь ещё набирает запрос, выборка пока не пересчитана.
+    var isTypingAhead: Bool { debouncedQuery != searchText }
 
     /// Иерархия с учётом выбранного фильтра по статусу.
     var seasons: [SeasonStyle] {
@@ -32,7 +70,7 @@ final class WardrobeListViewModel {
 
     /// Результаты текстового поиска с учётом фильтра.
     var searchResults: [ItemPlacement] {
-        repository.search(searchText, statuses: statusFilter)
+        repository.search(debouncedQuery, statuses: statusFilter)
     }
 
     var seasonCount: Int { repository.seasons.count }

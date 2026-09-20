@@ -18,6 +18,9 @@ struct TripWardrobeApp: App {
 
     @State private var isBootstrapped = false
 
+    /// Источник каталога: REST API с резервом из ресурсов приложения.
+    @State private var catalogProvider = FallbackCatalogProvider()
+
     init() {
         let schema = Schema([
             SeasonEntity.self,
@@ -42,7 +45,9 @@ struct TripWardrobeApp: App {
         self.modelContainer = container
         let repository = SwiftDataRepository(context: container.mainContext)
         _repository = State(initialValue: repository)
-        _services = State(initialValue: ServiceContainer(repository: repository))
+        _services = State(initialValue: ServiceContainer(
+            repository: repository,
+            weather: FallbackWeatherService()))
     }
 
     var body: some Scene {
@@ -50,6 +55,7 @@ struct TripWardrobeApp: App {
             RootView(services: services,
                      settings: settings,
                      repository: repository,
+                     catalogProvider: catalogProvider,
                      onResync: { await bootstrap(force: true) })
                 .environment(services)
                 .environment(settings)
@@ -65,13 +71,14 @@ struct TripWardrobeApp: App {
 
     /// Наполнение базы начальными данными при старте приложения.
     ///
-    /// База изначально пуста. Каталог загружается при каждом запуске и
-    /// сливается с уже существующими записями: пользовательские данные
-    /// предыдущих сеансов — статусы вещей, созданные поездки — сохраняются.
+    /// База изначально пуста. Каталог запрашивается по REST API при каждом
+    /// запуске и сливается с уже существующими записями: пользовательские
+    /// данные предыдущих сеансов — статусы вещей, созданные поездки —
+    /// сохраняются. Если сеть недоступна, каталог берётся из ресурсов.
     @MainActor
     private func bootstrap(force: Bool) async {
         do {
-            let catalog = try await BundleCatalogProvider().loadCatalog()
+            let catalog = try await catalogProvider.loadCatalog()
             try repository.synchronize(with: catalog)
         } catch {
             print("Не удалось загрузить каталог: \(error.localizedDescription)")
