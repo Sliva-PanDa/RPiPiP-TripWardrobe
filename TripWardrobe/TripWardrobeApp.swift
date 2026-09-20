@@ -2,14 +2,14 @@ import SwiftUI
 
 @main
 struct TripWardrobeApp: App {
-    /// Единый источник данных, создаваемый в точке входа и передаваемый
-    /// вниз по иерархии экранов механизмом environment.
-    @State private var store = WardrobeStore()
+    /// Контейнер зависимостей собирается один раз в точке входа
+    /// и передаётся вниз по иерархии экранов через environment.
+    @State private var services = ServiceContainer()
 
     var body: some Scene {
         WindowGroup {
-            RootView()
-                .environment(store)
+            RootView(services: services)
+                .environment(services)
         }
     }
 }

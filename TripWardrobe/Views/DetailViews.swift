@@ -2,11 +2,11 @@ import SwiftUI
 
 /// Экран сезона/стиля: список входящих в него образов.
 struct SeasonView: View {
-    @Environment(WardrobeStore.self) private var store
+    let viewModel: WardrobeListViewModel
     let seasonID: SeasonStyle.ID
 
     var body: some View {
-        if let season = store.season(id: seasonID) {
+        if let season = viewModel.season(id: seasonID) {
             List {
                 Section {
                     LabeledContent("Образов", value: "\(season.looks.count)")
@@ -33,11 +33,11 @@ struct SeasonView: View {
 
 /// Экран образа: перечень входящих вещей.
 struct LookView: View {
-    @Environment(WardrobeStore.self) private var store
+    let viewModel: WardrobeListViewModel
     let lookID: Look.ID
 
     var body: some View {
-        if let found = store.look(id: lookID) {
+        if let found = viewModel.look(id: lookID) {
             List {
                 Section {
                     LabeledContent("Сезон/стиль", value: found.season.name)
@@ -65,11 +65,11 @@ struct LookView: View {
 
 /// Экран вещи с указанием её местоположения в гардеробе.
 struct ItemDetailView: View {
-    @Environment(WardrobeStore.self) private var store
+    let viewModel: WardrobeListViewModel
     let itemID: WardrobeItem.ID
 
     var body: some View {
-        if let placement = store.placement(ofItem: itemID) {
+        if let placement = viewModel.placement(ofItem: itemID) {
             List {
                 Section {
                     VStack(spacing: 12) {

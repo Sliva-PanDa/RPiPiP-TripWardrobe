@@ -2,27 +2,26 @@ import SwiftUI
 
 /// Главный экран: иерархия «Сезон/Стиль → Образ → Вещь»,
 /// текстовый поиск по вещам и фильтрация по статусу.
+///
+/// Представление не содержит логики: всё состояние и все вычисления
+/// вынесены в `WardrobeListViewModel`.
 struct WardrobeHomeView: View {
-    @Environment(WardrobeStore.self) private var store
-
-    @State private var searchText = ""
-    @State private var statusFilter: Set<ItemStatus> = []
-    @State private var expanded: Set<Look.ID> = []
+    @Bindable var viewModel: WardrobeListViewModel
 
     var body: some View {
         List {
             summarySection
             filterSection
 
-            if searchText.isEmpty {
-                hierarchySection
-            } else {
+            if viewModel.isSearching {
                 searchSection
+            } else {
+                hierarchySection
             }
         }
         .listStyle(.insetGrouped)
         .navigationTitle("Гардероб")
-        .searchable(text: $searchText,
+        .searchable(text: $viewModel.searchText,
                     placement: .navigationBarDrawer(displayMode: .always),
                     prompt: "Поиск вещи")
         .accessibilityIdentifier("homeList")
@@ -33,11 +32,14 @@ struct WardrobeHomeView: View {
     private var summarySection: some View {
         Section {
             HStack(spacing: 12) {
-                StatBadge(value: "\(store.seasons.count)", title: "сезонов", icon: "square.stack.3d.up")
-                StatBadge(value: "\(store.lookCount)", title: "образов", icon: "person.crop.rectangle.stack")
-                StatBadge(value: "\(store.itemCount)", title: "вещей", icon: "tshirt")
-                StatBadge(value: WeightFormatter.string(grams: store.totalWeightGrams),
-                          title: "всего", icon: "scalemass")
+                StatBadge(value: "\(viewModel.seasonCount)", title: "сезонов",
+                          icon: "square.stack.3d.up")
+                StatBadge(value: "\(viewModel.lookCount)", title: "образов",
+                          icon: "person.crop.rectangle.stack")
+                StatBadge(value: "\(viewModel.itemCount)", title: "вещей",
+                          icon: "tshirt")
+                StatBadge(value: viewModel.totalWeightTitle, title: "всего",
+                          icon: "scalemass")
             }
             .listRowInsets(EdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 8))
         }
@@ -51,14 +53,14 @@ struct WardrobeHomeView: View {
                 HStack(spacing: 8) {
                     ForEach(ItemStatus.allCases) { status in
                         StatusChip(status: status,
-                                   count: store.count(of: status),
-                                   isOn: statusFilter.contains(status)) {
-                            toggle(status)
+                                   count: viewModel.count(of: status),
+                                   isOn: viewModel.statusFilter.contains(status)) {
+                            viewModel.toggle(status)
                         }
                     }
-                    if !statusFilter.isEmpty {
+                    if !viewModel.statusFilter.isEmpty {
                         Button("Сбросить", systemImage: "xmark.circle") {
-                            statusFilter.removeAll()
+                            viewModel.resetFilter()
                         }
                         .font(.caption)
                         .buttonStyle(.borderless)
@@ -73,19 +75,11 @@ struct WardrobeHomeView: View {
         }
     }
 
-    private func toggle(_ status: ItemStatus) {
-        if statusFilter.contains(status) {
-            statusFilter.remove(status)
-        } else {
-            statusFilter.insert(status)
-        }
-    }
-
     // MARK: - Иерархия
 
     @ViewBuilder
     private var hierarchySection: some View {
-        let seasons = store.filteredSeasons(statuses: statusFilter)
+        let seasons = viewModel.seasons
         if seasons.isEmpty {
             Section {
                 ContentUnavailableView("Нет вещей с выбранным статусом",
@@ -112,7 +106,7 @@ struct WardrobeHomeView: View {
     }
 
     private func lookGroup(_ look: Look) -> some View {
-        DisclosureGroup(isExpanded: binding(for: look.id)) {
+        DisclosureGroup(isExpanded: expansionBinding(for: look.id)) {
             ForEach(look.items) { item in
                 NavigationLink(value: Route.item(item.id)) {
                     ItemRow(item: item)
@@ -133,16 +127,16 @@ struct WardrobeHomeView: View {
 
     @ViewBuilder
     private var searchSection: some View {
-        let results = store.search(searchText, statuses: statusFilter)
+        let results = viewModel.searchResults
         if results.isEmpty {
             Section {
-                ContentUnavailableView.search(text: searchText)
+                ContentUnavailableView.search(text: viewModel.searchText)
             }
         } else {
             Section("Найдено: \(results.count)") {
                 ForEach(results) { placement in
                     NavigationLink(value: Route.item(placement.item.id)) {
-                        SearchResultRow(placement: placement, query: searchText)
+                        SearchResultRow(placement: placement, query: viewModel.searchText)
                     }
                 }
             }
@@ -151,19 +145,17 @@ struct WardrobeHomeView: View {
 
     // MARK: - Вспомогательное
 
-    private func binding(for id: Look.ID) -> Binding<Bool> {
+    private func expansionBinding(for id: Look.ID) -> Binding<Bool> {
         Binding(
-            get: { expanded.contains(id) },
-            set: { isOn in
-                if isOn { expanded.insert(id) } else { expanded.remove(id) }
-            }
+            get: { viewModel.isExpanded(id) },
+            set: { viewModel.setExpanded($0, for: id) }
         )
     }
 }
 
 #Preview {
-    NavigationStack {
-        WardrobeHomeView()
+    let services = ServiceContainer()
+    return NavigationStack {
+        WardrobeHomeView(viewModel: WardrobeListViewModel(repository: services.repository))
     }
-    .environment(WardrobeStore())
 }

@@ -25,6 +25,11 @@ enum TripKind: String, CaseIterable, Identifiable, Hashable {
     }
 }
 
+/// Маршруты навигации раздела «Поездки».
+enum TripRoute: Hashable {
+    case trip(Trip.ID)
+}
+
 /// Предустановленные лимиты веса багажа авиакомпаний.
 enum BaggageLimit: Int, CaseIterable, Identifiable, Hashable {
     /// Ручная кладь — 10 кг.
