@@ -39,11 +39,25 @@ final class TripScreenshotUITests: XCTestCase {
         app.descendants(matching: .any).matching(identifier: identifier).firstMatch
     }
 
-    private func openTripsTab() {
-        let tab = app.tabBars.buttons["Поездки"].firstMatch
-        if tab.waitForExistence(timeout: 15) {
-            tab.tap()
+    /// Переключение раздела. На iPhone вкладки выводятся панелью снизу,
+    /// на iPad в iPadOS 18 — сегментированным элементом сверху, поэтому
+    /// элемент ищется в обоих представлениях.
+    @discardableResult
+    private func openTab(_ title: String) -> Bool {
+        let candidates = [
+            app.tabBars.buttons[title].firstMatch,
+            app.segmentedControls.buttons[title].firstMatch,
+            app.buttons[title].firstMatch
+        ]
+        for candidate in candidates where candidate.waitForExistence(timeout: 5) {
+            candidate.tap()
+            return true
         }
+        return false
+    }
+
+    private func openTripsTab() {
+        openTab("Поездки")
         _ = element("tripList").waitForExistence(timeout: 10)
     }
 
