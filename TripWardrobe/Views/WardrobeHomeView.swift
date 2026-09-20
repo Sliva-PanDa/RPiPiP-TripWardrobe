@@ -1,4 +1,4 @@
-import SwiftUI
+﻿import SwiftUI
 
 /// Главный экран: иерархия «Сезон/Стиль → Образ → Вещь»,
 /// текстовый поиск по вещам и фильтрация по статусу.
@@ -64,8 +64,8 @@ struct WardrobeHomeView: View {
             HStack {
                 Text("Статус вещи")
                 Spacer()
-                if !viewModel.statusFilter.isEmpty {
-                    Button("Сбросить") { viewModel.resetFilter() }
+                if !statusFilter.isEmpty {
+                    Button("Сбросить") { statusFilter.removeAll() }
                         .font(.caption)
                         .textCase(nil)
                         .buttonStyle(.borderless)
