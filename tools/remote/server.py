@@ -34,6 +34,7 @@ PORT = int(os.environ.get("PORT", "8080"))
 # HID-коды клавиш для команды «idb ui key».
 KEY_BACKSPACE = 42
 KEY_RETURN = 40
+KEY_V = 25
 
 _frame: bytes = b""
 _frame_lock = threading.Lock()
@@ -101,6 +102,24 @@ def idb(*arguments: str) -> None:
             print("idb ui", action, "->", result.stderr.decode()[:200], flush=True)
     except Exception as error:
         print("Сбой idb:", error, flush=True)
+
+
+def type_text(text: str) -> None:
+    """Ввод текста в поле симулятора.
+
+    «idb ui text» печатает, нажимая клавиши американской раскладки, поэтому
+    справляется только с латиницей. Остальные символы (кириллица и т. п.)
+    кладутся в буфер обмена симулятора и вставляются сочетанием Cmd+V.
+    """
+    if text.isascii():
+        idb("text", text)
+        return
+    try:
+        subprocess.run(["xcrun", "simctl", "pbcopy", UDID],
+                       input=text.encode("utf-8"), capture_output=True, timeout=10)
+        idb("key", str(KEY_V), "--command")
+    except Exception as error:
+        print("Сбой вставки текста:", error, flush=True)
 
 
 def to_points(x: float, y: float) -> tuple[int, int]:
@@ -309,7 +328,7 @@ class Handler(BaseHTTPRequestHandler):
         elif path == "/text":
             text = str(payload.get("text", ""))[:80]
             if text:
-                idb("text", text)
+                type_text(text)
         elif path == "/key":
             name = str(payload.get("key", ""))
             code = {"backspace": KEY_BACKSPACE, "return": KEY_RETURN}.get(name)
