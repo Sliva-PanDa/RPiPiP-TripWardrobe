@@ -103,10 +103,16 @@ def idb(*arguments: str) -> None:
         print("Сбой idb:", error, flush=True)
 
 
-def to_points(x: float, y: float) -> tuple[float, float]:
-    """Из долей ширины и высоты экрана — в точки."""
+def to_points(x: float, y: float) -> tuple[int, int]:
+    """Из долей ширины и высоты экрана — в целые точки.
+
+    idb 1.6 принимает только целые координаты: дробные значения вроде
+    «201.3 437.0» он отвергает как неразобранный маркер.
+    """
     width, height = _point_size
-    return max(0.0, min(1.0, x)) * width, max(0.0, min(1.0, y)) * height
+    px = round(max(0.0, min(1.0, x)) * width)
+    py = round(max(0.0, min(1.0, y)) * height)
+    return min(px, int(width) - 1), min(py, int(height) - 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -295,12 +301,11 @@ class Handler(BaseHTTPRequestHandler):
 
         if path == "/tap":
             x, y = to_points(float(payload.get("x", 0)), float(payload.get("y", 0)))
-            idb("tap", f"{x:.1f}", f"{y:.1f}")
+            idb("tap", str(x), str(y))
         elif path == "/swipe":
             x1, y1 = to_points(float(payload.get("x1", 0)), float(payload.get("y1", 0)))
             x2, y2 = to_points(float(payload.get("x2", 0)), float(payload.get("y2", 0)))
-            idb("swipe", f"{x1:.1f}", f"{y1:.1f}", f"{x2:.1f}", f"{y2:.1f}",
-                "--duration", "0.25")
+            idb("swipe", str(x1), str(y1), str(x2), str(y2), "--duration", "0.25")
         elif path == "/text":
             text = str(payload.get("text", ""))[:80]
             if text:
