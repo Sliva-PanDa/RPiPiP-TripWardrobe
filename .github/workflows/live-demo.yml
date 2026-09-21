@@ -33,21 +33,57 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Установить XcodeGen, idb и cloudflared
+      - name: Выбрать Xcode
         run: |
+          # idb_companion 1.6 собран под Xcode 26 и подгружает CoreSimulator
+          # из выбранного Xcode, поэтому берём самый новый Xcode 26, если он есть.
+          echo "Установленные Xcode:"
+          ls -d /Applications/Xcode*.app || true
+          NEWEST=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1 || true)
+          if [ -n "$NEWEST" ]; then
+            echo "Выбираю $NEWEST"
+            sudo xcode-select -s "$NEWEST/Contents/Developer"
+          else
+            echo "Xcode 26 не найден, остаётся текущий"
+          fi
+          xcodebuild -version
+
+      - name: Установить XcodeGen, idb и cloudflared
+        env:
+          IDB_VERSION: "1.6.1"
+          IDB_SHA256: "f59cadedbb05fe21c11522ee297cd8827b758136e27837a647267682cb2c80bb"
+        run: |
+          set -e
           brew install xcodegen cloudflared
 
-          # idb лежит в стороннем репозитории формул, его нужно явно доверить.
-          brew tap facebook/fb
-          brew trust facebook/fb || brew trust --formula facebook/fb/idb-companion || true
-          brew install facebook/fb/idb-companion
+          # Готовая сборка idb_companion берётся прямо из релиза facebook/idb:
+          # формула Homebrew требует Xcode 26 ещё до установки, а сам бинарник
+          # собирать не нужно. Контрольная сумма сверяется с опубликованной.
+          ARCHIVE="$RUNNER_TEMP/idb-companion.tar.gz"
+          curl -fsSL -o "$ARCHIVE" \
+            "https://github.com/facebook/idb/releases/download/v${IDB_VERSION}/idb-companion.macos-arm64.tar.gz"
+          echo "${IDB_SHA256}  ${ARCHIVE}" | shasum -a 256 -c -
 
+          # Дерево распаковывается целиком: idb_companion ищет папку Resources
+          # рядом со своим исполняемым файлом.
+          COMPANION="$HOME/idb-companion"
+          mkdir -p "$COMPANION"
+          tar -xzf "$ARCHIVE" -C "$COMPANION"
+          if [ ! -x "$COMPANION/idb_companion" ]; then
+            FOUND=$(find "$COMPANION" -name idb_companion -type f -perm -u+x | head -1)
+            COMPANION=$(dirname "$FOUND")
+          fi
+          xattr -dr com.apple.quarantine "$COMPANION" || true
+          echo "$COMPANION" >> "$GITHUB_PATH"
+          export PATH="$COMPANION:$PATH"
+
+          # Клиент той же версии, что и сервер.
           python -m pip install --upgrade pip
-          python -m pip install fb-idb
+          python -m pip install "fb-idb==${IDB_VERSION}"
 
           echo "--- проверка ---"
-          idb_companion --version || true
-          idb --help >/dev/null 2>&1 && echo "idb установлен" || echo "idb НЕ установлен"
+          idb_companion --version
+          idb --help >/dev/null && echo "idb установлен"
 
       - name: Сгенерировать проект Xcode
         run: xcodegen generate --spec project.yml
@@ -68,9 +104,11 @@ jobs:
                   available.extend(d for d in devices if d.get("isAvailable"))
 
           preferred = {
-              "iPhone": ["iPhone 16 Pro", "iPhone 16", "iPhone 15 Pro", "iPhone 15"],
-              "iPad": ["iPad Pro 13-inch (M4)", "iPad Pro 11-inch (M4)",
-                       "iPad Air 13-inch (M2)", "iPad Air (5th generation)"],
+              "iPhone": ["iPhone 17 Pro", "iPhone 16 Pro", "iPhone 17", "iPhone 16",
+                         "iPhone 15 Pro", "iPhone 15"],
+              "iPad": ["iPad Pro 13-inch (M5)", "iPad Pro 13-inch (M4)",
+                       "iPad Pro 11-inch (M5)", "iPad Pro 11-inch (M4)",
+                       "iPad Air 13-inch (M3)", "iPad Air 13-inch (M2)"],
           }[family]
 
           for name in preferred:
