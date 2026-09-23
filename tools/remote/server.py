@@ -165,21 +165,25 @@ body{margin:0;background:#101014;color:#eee;font:15px/1.4 -apple-system,
  "Segoe UI",system-ui,sans-serif;display:grid;place-items:center;
  min-height:100vh;gap:.8rem;padding:1rem;box-sizing:border-box}
 #screen{max-height:78vh;border-radius:1.6rem;border:2px solid #333;
- background:#000;touch-action:none;cursor:pointer;display:block}
+ background:#000;touch-action:none;cursor:pointer;display:block;
+ user-select:none;-webkit-user-select:none;-webkit-user-drag:none}
 #bar{display:flex;gap:.5rem;flex-wrap:wrap;justify-content:center}
 button{font:inherit;padding:.5rem .9rem;border-radius:.6rem;border:0;
  background:#2a2a32;color:#eee;cursor:pointer}
 button:hover{background:#3a3a45}
 #hint{opacity:.6;font-size:.85rem;text-align:center;max-width:34rem}
 </style></head><body>
-<img id="screen" alt="Экран симулятора">
+<img id="screen" alt="Экран симулятора" draggable="false">
 <div id="bar">
+  <button onclick="scrollScreen(-1)">▲ Вверх</button>
+  <button onclick="scrollScreen(1)">▼ Вниз</button>
   <button onclick="key('backspace')">⌫ Стереть</button>
   <button onclick="key('return')">Enter</button>
   <button onclick="post('/home')">Домой</button>
   <button onclick="post('/relaunch')">Перезапустить приложение</button>
 </div>
-<p id="hint">Щёлкайте мышью как пальцем, перетаскивайте для прокрутки.
+<p id="hint">Щёлкайте мышью как пальцем. Прокрутка: колёсико мыши,
+кнопки «Вверх» и «Вниз» или перетаскивание.
 Чтобы ввести текст, нажмите на поле в приложении и печатайте на клавиатуре.
 Картинка обновляется с задержкой около секунды.</p>
 <script>
@@ -212,8 +216,17 @@ function position(event) {
           y: (event.clientY - box.top) / box.height};
 }
 
+// Браузер по умолчанию «перетаскивает» картинку, и тогда отпускание мыши
+// до страницы не доходит — свайп не отправляется. Поэтому своё перетаскивание
+// браузеру запрещаем, а указатель захватываем до отпускания.
+screen.addEventListener('dragstart', event => event.preventDefault());
+
 let start = null;
-screen.addEventListener('pointerdown', event => { start = position(event); });
+screen.addEventListener('pointerdown', event => {
+  event.preventDefault();
+  start = position(event);
+  try { screen.setPointerCapture(event.pointerId); } catch (error) { /* не критично */ }
+});
 screen.addEventListener('pointerup', event => {
   if (!start) return;
   const end = position(event);
@@ -221,7 +234,26 @@ screen.addEventListener('pointerup', event => {
   if (distance < 0.02) post('/tap', end);
   else post('/swipe', {x1: start.x, y1: start.y, x2: end.x, y2: end.y});
   start = null;
+  try { screen.releasePointerCapture(event.pointerId); } catch (error) { /* не критично */ }
 });
+screen.addEventListener('pointercancel', () => { start = null; });
+
+// Прокрутка колёсиком мыши и кнопками: один шаг — треть экрана.
+function scrollScreen(direction, x = 0.5) {
+  const from = direction > 0 ? 0.70 : 0.35;
+  const to = direction > 0 ? 0.35 : 0.70;
+  post('/swipe', {x1: x, y1: from, x2: x, y2: to});
+}
+
+let wheelPending = 0;
+screen.addEventListener('wheel', event => {
+  event.preventDefault();
+  if (wheelPending) return;
+  const direction = event.deltaY > 0 ? 1 : -1;
+  const point = position(event);
+  wheelPending = setTimeout(() => { wheelPending = 0; }, 450);
+  scrollScreen(direction, point.x);
+}, {passive: false});
 
 document.addEventListener('keydown', event => {
   if (event.metaKey || event.ctrlKey || event.altKey) return;

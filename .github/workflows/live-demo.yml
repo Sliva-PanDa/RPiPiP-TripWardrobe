@@ -147,13 +147,38 @@ jobs:
             CODE_SIGNING_ALLOWED=NO \
             SWIFT_VERSION=5.0
 
-          xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
-          xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
+          UDID="${{ steps.sim.outputs.udid }}"
+
+          # simctl bootstatus иногда ждёт готовности бесконечно, поэтому
+          # состояние симулятора опрашивается вручную и с ограничением времени.
+          wait_booted () {
+            for _ in $(seq 1 60); do
+              STATE=$(xcrun simctl list devices -j \
+                | python3 -c "import json,sys;d=json.load(sys.stdin);print(next((x['state'] for g in d['devices'].values() for x in g if x['udid']=='$UDID'),'?'))")
+              if [ "$STATE" = "Booted" ]; then
+                echo "Симулятор загружен"
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+
+          xcrun simctl boot "$UDID" 2>/dev/null || true
+          if ! wait_booted; then
+            echo "Симулятор не поднялся, пробую ещё раз"
+            xcrun simctl shutdown "$UDID" 2>/dev/null || true
+            sleep 5
+            xcrun simctl boot "$UDID" 2>/dev/null || true
+            wait_booted || { echo "Симулятор так и не загрузился"; exit 1; }
+          fi
+          # Дать системным службам симулятора дойти до рабочего состояния.
+          sleep 15
 
           APP=$(find build/Build/Products/Debug-iphonesimulator -maxdepth 1 -name '*.app' | head -1)
           echo "Приложение: $APP"
-          xcrun simctl install "${{ steps.sim.outputs.udid }}" "$APP"
-          xcrun simctl launch "${{ steps.sim.outputs.udid }}" by.gstu.itp41.TripWardrobe
+          xcrun simctl install "$UDID" "$APP"
+          xcrun simctl launch "$UDID" by.gstu.itp41.TripWardrobe
 
       - name: Сгенерировать пароль
         id: secret
