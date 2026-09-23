@@ -13,6 +13,9 @@ screenshots-flat/
 Thumbs.db
 desktop.ini
 
+# Временные файлы Word, появляются при открытом документе
+~$*
+
 # Прочее
 *.moved-aside
 *.hmap
