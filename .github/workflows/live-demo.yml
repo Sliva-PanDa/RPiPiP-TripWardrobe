@@ -23,10 +23,18 @@ jobs:
     timeout-minutes: 120
 
     steps:
-      - name: Получить исходный код
+      - name: Получить исходный код приложения
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.ref }}
+
+      # Ветки lab1…lab4 заморожены раньше, чем появился веб-пульт, поэтому
+      # его файлы всегда берутся из main — независимо от выбранной ветки.
+      - name: Получить файлы пульта из main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          path: .pult
 
       - name: Установить Python 3.11
         uses: actions/setup-python@v5
@@ -136,7 +144,8 @@ jobs:
             -configuration Debug \
             -destination "platform=iOS Simulator,id=${{ steps.sim.outputs.udid }}" \
             -derivedDataPath build \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            SWIFT_VERSION=5.0
 
           xcrun simctl boot "${{ steps.sim.outputs.udid }}" || true
           xcrun simctl bootstatus "${{ steps.sim.outputs.udid }}" -b
@@ -167,7 +176,7 @@ jobs:
           REMOTE_PASSWORD="${{ steps.secret.outputs.password }}" \
           BUNDLE_ID="by.gstu.itp41.TripWardrobe" \
           PORT=8080 \
-          nohup python3 tools/remote/server.py > remote-server.log 2>&1 &
+          nohup python3 .pult/tools/remote/server.py > remote-server.log 2>&1 &
           for i in $(seq 1 40); do
             if curl -sf -o /dev/null http://127.0.0.1:8080/; then
               echo "Пульт отвечает"; break
@@ -213,6 +222,23 @@ jobs:
           echo "  ССЫЛКА: ${{ steps.tunnel.outputs.url }}"
           echo "  ПАРОЛЬ: ${{ steps.secret.outputs.password }}"
           echo "==========================================================="
+
+      # Файл со ссылкой доступен для скачивания сразу, не дожидаясь конца
+      # сеанса, — из него ссылку забирает скрипт «Запустить приложение.cmd».
+      - name: Выложить ссылку файлом
+        run: |
+          mkdir -p link
+          {
+            echo "${{ steps.tunnel.outputs.url }}"
+            echo "${{ steps.secret.outputs.password }}"
+          } > link/link.txt
+          cat link/link.txt
+
+      - name: Опубликовать файл со ссылкой
+        uses: actions/upload-artifact@v4
+        with:
+          name: link
+          path: link/link.txt
 
       - name: Держать сеанс открытым
         run: |
